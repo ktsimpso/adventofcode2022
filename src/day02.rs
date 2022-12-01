@@ -1,4 +1,4 @@
-use adventofcode2022::{parse_line, parse_usize, Problem, ProblemWithTwoParts};
+use adventofcode2022::{parse_lines, parse_usize, Problem, ProblemWithTwoParts};
 use bpaf::{construct, short, Parser as ArgParser};
 use chumsky::{prelude::Simple, primitive::filter, Parser};
 
@@ -28,7 +28,7 @@ fn parse_file(file: String) -> Vec<char> {
 }
 
 fn parser() -> impl Parser<char, Vec<char>, Error = Simple<char>> {
-    parse_line(filter(|c| true))
+    parse_lines(filter(|c| true))
 }
 
 fn run(input: Vec<char>, arguments: Arguments1) -> usize {

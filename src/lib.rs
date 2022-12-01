@@ -324,7 +324,7 @@ pub fn parse_isize_with_radix(radix: u32) -> impl Parser<char, isize, Error = Si
         })
 }
 
-pub fn parse_line<T>(
+pub fn parse_lines<T>(
     line_parser: impl Parser<char, T, Error = Simple<char>>,
 ) -> impl Parser<char, Vec<T>, Error = Simple<char>> {
     line_parser.separated_by(just('\n')).allow_trailing()
