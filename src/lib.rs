@@ -8,7 +8,12 @@ use std::{
 };
 
 use bpaf::{command, construct, parsers::ParseCommand, pure, short, Parser as ArgParser};
-use chumsky::{prelude::Simple, primitive::just, text, Parser};
+use chumsky::{
+    prelude::Simple,
+    primitive::{end, just, take_until},
+    text::{self, newline},
+    Parser,
+};
 
 pub enum CommandResult {
     Isize(isize),
@@ -327,5 +332,44 @@ pub fn parse_isize_with_radix(radix: u32) -> impl Parser<char, isize, Error = Si
 pub fn parse_lines<T>(
     line_parser: impl Parser<char, T, Error = Simple<char>>,
 ) -> impl Parser<char, Vec<T>, Error = Simple<char>> {
-    line_parser.separated_by(just('\n')).allow_trailing()
+    line_parser.separated_by(text::newline()).allow_trailing()
+}
+
+pub fn parse_chunks<T>(
+    chunker: impl Parser<char, Vec<Vec<char>>, Error = Simple<char>>,
+    chunk_parser: impl Parser<char, T, Error = Simple<char>>,
+) -> impl Parser<char, Vec<T>, Error = Simple<char>> {
+    chunker.try_map(move |chunks, span| {
+        chunks
+            .into_iter()
+            .map(|chunk| chunk_parser.parse(chunk))
+            .collect::<Result<Vec<T>, _>>()
+            .map_err(|ops| {
+                Simple::custom(
+                    span,
+                    ops.into_iter()
+                        .map(|op| op.to_string())
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                )
+            })
+    })
+}
+
+pub fn parse_between_blank_lines<T>(
+    chunk_parser: impl Parser<char, T, Error = Simple<char>>,
+) -> impl Parser<char, Vec<T>, Error = Simple<char>> {
+    parse_chunks(chunk_blank_lines(), chunk_parser)
+}
+
+pub fn chunk_blank_lines() -> impl Parser<char, Vec<Vec<char>>, Error = Simple<char>> {
+    let blank_line = newline().repeated().exactly(2).ignored();
+    take_until(blank_line)
+        .map(|(c, _)| c)
+        .repeated()
+        .then(take_until(end()))
+        .map(|(mut first_chunks, (last_chunk, _))| {
+            first_chunks.push(last_chunk);
+            first_chunks
+        })
 }

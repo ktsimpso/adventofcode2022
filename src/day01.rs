@@ -1,8 +1,10 @@
-use adventofcode2022::{parse_lines, parse_usize, Problem, ProblemWithTwoParts};
+use adventofcode2022::{
+    parse_between_blank_lines, parse_lines, parse_usize, Problem, ProblemWithTwoParts,
+};
 use bpaf::{construct, short, Parser as ArgParser};
 use chumsky::{prelude::Simple, Parser};
 
-type ParseOutput = Vec<Option<usize>>;
+type ParseOutput = Vec<Vec<usize>>;
 
 pub const DAY_01: ProblemWithTwoParts<CommandLineArguments, ParseOutput, usize> = Problem::new(
     "day01",
@@ -33,28 +35,17 @@ fn parse_file(file: String) -> ParseOutput {
 }
 
 fn parser() -> impl Parser<char, ParseOutput, Error = Simple<char>> {
-    parse_lines(parse_usize().or_not())
+    parse_between_blank_lines(parse_lines(parse_usize()))
 }
 
 fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
-    let (mut sums, last_sum) = input.into_iter().fold(
-        (Vec::new(), 0usize),
-        |(mut results, mut current_sum), current| {
-            match current {
-                Some(value) => current_sum += value,
-                _ => {
-                    results.push(current_sum);
-                    current_sum = 0;
-                }
-            };
-            (results, current_sum)
-        },
-    );
+    let mut bag_sums = input
+        .into_iter()
+        .map(|bag| bag.into_iter().sum())
+        .collect::<Vec<usize>>();
 
-    sums.push(last_sum);
+    bag_sums.sort();
+    bag_sums.reverse();
 
-    sums.sort();
-    sums.reverse();
-
-    sums.into_iter().take(arguments.n).sum()
+    bag_sums.into_iter().take(arguments.n).sum()
 }

@@ -1,5 +1,6 @@
 use adventofcode2022::{Command, CommandParser};
-use bpaf::{construct, Parser};
+use bpaf::{construct, Parser as ArgParser};
+
 mod day01;
 mod day02;
 
