@@ -1,33 +1,34 @@
 use adventofcode2022::{
-    parse_between_blank_lines, parse_lines, parse_usize, Problem, ProblemWithTwoParts,
+    parse_between_blank_lines, parse_lines, parse_usize, single_arg, Command, Problem,
 };
-use bpaf::{construct, short, Parser as ArgParser};
 use chumsky::{prelude::Simple, Parser};
+use clap::ArgMatches;
+use std::cell::LazyCell;
 
 type ParseOutput = Vec<Vec<usize>>;
 
-pub const DAY_01: ProblemWithTwoParts<CommandLineArguments, ParseOutput, usize> = Problem::new(
-    "day01",
-    "Takes a list of elves backpacks calorie count and find the ones with the most",
-    "Path to the input file. Input should be newline delimited groups integers. Each group represents one elf's bag, each line in the group is the caloric value of that item.",
-    parse_arguments,
-    parse_file,
-    run,
-)
-.with_part1(CommandLineArguments { n: 1}, "Finds the elf with the most calories in their bag and returns the sum of the calories")
-.with_part2(CommandLineArguments { n: 3 }, "Finds the elves with the 3 top most calories and sums the calories.");
+pub const DAY_01: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
+    let number = single_arg("number", 'n', "The number of elves to sum")
+        .value_parser(clap::value_parser!(usize));
+    let problem = Problem::new(
+        "day01",
+        "Takes a list of elves backpacks calorie count and find the ones with the most",
+        "Path to the input file. Input should be newline delimited groups integers. Each group represents one elf's bag, each line in the group is the caloric value of that item.",
+    vec![number], parse_arguments, parse_file, run)
+        .with_part1(CommandLineArguments { n: 1 }, "Finds the elf with the most calories in their bag and returns the sum of the calories")
+        .with_part2(CommandLineArguments { n: 3 }, "Finds the elves with the 3 top most calories and sums the calories.");
+    Box::new(problem)
+});
 
 #[derive(Debug, Clone)]
 pub struct CommandLineArguments {
     n: usize,
 }
 
-fn parse_arguments() -> Box<dyn ArgParser<CommandLineArguments>> {
-    let n = short('n')
-        .long("number")
-        .help("The number of elves to sum")
-        .argument::<usize>("SHORT");
-    Box::new(construct!(CommandLineArguments { n }))
+fn parse_arguments(args: &ArgMatches) -> CommandLineArguments {
+    CommandLineArguments {
+        n: *args.get_one::<usize>("number").expect("Valid arguments"),
+    }
 }
 
 fn parse_file(file: String) -> ParseOutput {

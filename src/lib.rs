@@ -1,18 +1,19 @@
-#![feature(return_position_impl_trait_in_trait)]
+#![feature(once_cell)]
 
-use std::{
-    fmt::{self, Display},
-    fs::File,
-    io::Read,
-    path::PathBuf,
-};
-
-use bpaf::{command, construct, parsers::ParseCommand, pure, short, Parser as ArgParser};
 use chumsky::{
     prelude::Simple,
     primitive::{end, just, take_until},
     text::{self, newline},
     Parser,
+};
+use clap::{
+    builder::PathBufValueParser, Arg, ArgAction, ArgMatches, Command as ClapCommand, ValueHint,
+};
+use std::{
+    fmt::{self, Display},
+    fs::File,
+    io::Read,
+    path::PathBuf,
 };
 
 pub enum CommandResult {
@@ -42,259 +43,171 @@ impl From<usize> for CommandResult {
 }
 
 pub trait Command {
-    fn run(self) -> CommandResult;
-}
+    fn run(&self, args: &ArgMatches) -> CommandResult;
 
-pub trait CommandParser {
-    fn command(self) -> ParseCommand<impl Command>;
-}
+    fn get_name(&self) -> &'static str;
 
-pub struct RunnableProblem<T, U, R>
-where
-    R: Into<CommandResult>,
-{
-    file: String,
-    arguments: T,
-    parse_file: fn(String) -> U,
-    run: fn(U, T) -> R,
-}
-
-impl<T, U, R> Command for RunnableProblem<T, U, R>
-where
-    R: Into<CommandResult>,
-{
-    fn run(self) -> CommandResult {
-        (self.run)((self.parse_file)(self.file), self.arguments).into()
-    }
+    fn get_subcommand(&self) -> ClapCommand;
 }
 
 pub struct Problem<T, U, R>
 where
-    T: Clone + 'static,
-    U: 'static,
-    R: Into<CommandResult> + 'static,
+    T: Clone,
+    R: Into<CommandResult>,
 {
     name: &'static str,
-    about: &'static str,
-    file_help: &'static str,
-    argument_parser: fn() -> Box<dyn ArgParser<T>>,
+    subcommand: ClapCommand,
+    part1_data: Option<T>,
+    part2_data: Option<T>,
+    parse_args: fn(&ArgMatches) -> T,
     parse_file: fn(String) -> U,
     run: fn(U, T) -> R,
 }
 
 impl<T, U, R> Problem<T, U, R>
 where
-    T: Clone + 'static,
-    U: 'static,
-    R: Into<CommandResult> + 'static,
+    T: Clone,
+    R: Into<CommandResult>,
 {
-    pub const fn new(
+    pub fn new(
         name: &'static str,
-        about: &'static str,
-        file_help: &'static str,
-        argument_parser: fn() -> Box<dyn ArgParser<T>>,
+        help: &str,
+        file_help: &str,
+        args: Vec<Arg>,
+        parse_args: fn(&ArgMatches) -> T,
         parse_file: fn(String) -> U,
         run: fn(U, T) -> R,
-    ) -> Problem<T, U, R> {
+    ) -> Self {
+        let subcommand = subcommand(name, help, file_help).args(args);
         Problem {
             name,
-            about,
-            file_help,
-            argument_parser,
+            subcommand,
+            part1_data: None,
+            part2_data: None,
+            parse_args,
             parse_file,
             run,
         }
     }
 
-    pub const fn with_part1(self, value: T, docs: &'static str) -> ProblemWithOnePart<T, U, R> {
-        ProblemWithOnePart {
-            problem: self,
-            part1: ProblemPart { value, docs },
-        }
+    pub fn with_part1(mut self, argument: T, docs: &str) -> Self {
+        self.subcommand = self.subcommand.with_part1(docs);
+        self.part1_data = Some(argument);
+        self
+    }
+
+    pub fn with_part2(mut self, argument: T, docs: &str) -> Self {
+        self.subcommand = self.subcommand.with_part2(docs);
+        self.part2_data = Some(argument);
+        self
+    }
+
+    fn parse_matches(&self, args: &ArgMatches) -> (String, T) {
+        let (file_path, arg) = match args.subcommand_name() {
+            Some(name) => {
+                let mut file = PathBuf::new();
+                file.push(format!("{}/input.txt", self.name));
+                let arg = self
+                    .part1_data
+                    .iter()
+                    .map(|arg| ("part1", arg))
+                    .chain(self.part2_data.iter().map(|arg| ("part2", arg)))
+                    .filter_map(|(part_name, arg)| match name {
+                        a if a == part_name => Some(arg),
+                        _ => None,
+                    })
+                    .next()
+                    .expect("At least one part");
+
+                (file, arg.clone())
+            }
+            _ => (
+                args.get_one::<PathBuf>("file")
+                    .expect("File is required")
+                    .clone(),
+                (self.parse_args)(args),
+            ),
+        };
+        let file_contents = file_to_string(&file_path).expect("Can read file");
+        (file_contents, arg)
     }
 }
 
-impl<T, U, R> CommandParser for Problem<T, U, R>
+impl<T, U, R> Command for Problem<T, U, R>
 where
-    T: Clone + 'static,
-    U: 'static,
-    R: Into<CommandResult> + 'static,
+    T: Clone,
+    R: Into<CommandResult>,
 {
-    fn command(self) -> ParseCommand<impl Command> {
-        let file_name = file_name(self.file_help);
-        let parser = (self.argument_parser)();
-        let arguments = construct!(file_name, parser);
-        let parse_file = self.parse_file;
-        let run = self.run;
-        let options = construct!([arguments])
-            .parse(parse_path)
-            .map(move |(file, arguments)| RunnableProblem {
-                file,
-                arguments,
-                parse_file,
-                run,
-            })
-            .to_options();
+    fn run(&self, args: &ArgMatches) -> CommandResult {
+        let (file_contents, arg) = self.parse_matches(args);
+        let parse_result = (self.parse_file)(file_contents);
+        (self.run)(parse_result, arg).into()
+    }
 
-        command(self.name, options.descr(self.about))
+    fn get_name(&self) -> &'static str {
+        self.name
+    }
+
+    fn get_subcommand(&self) -> ClapCommand {
+        self.subcommand.clone()
     }
 }
 
-pub struct ProblemWithOnePart<T, U, R>
-where
-    T: Clone + 'static,
-    U: 'static,
-    R: Into<CommandResult> + 'static,
-{
-    problem: Problem<T, U, R>,
-    part1: ProblemPart<T>,
+fn file_arg(help: &str) -> Arg {
+    single_arg("file", 'f', help)
+        .value_hint(ValueHint::FilePath)
+        .value_parser(PathBufValueParser::new())
 }
 
-impl<T, U, R> ProblemWithOnePart<T, U, R>
-where
-    T: Clone + 'static,
-    U: 'static,
-    R: Into<CommandResult> + 'static,
-{
-    pub const fn with_part2(self, value: T, docs: &'static str) -> ProblemWithTwoParts<T, U, R> {
-        ProblemWithTwoParts {
-            part1: self,
-            part2: ProblemPart { value, docs },
-        }
+pub fn single_arg(name: &'static str, short: char, help: &str) -> Arg {
+    Arg::new(name)
+        .short(short)
+        .long(name)
+        .num_args(1)
+        .help(help.to_string())
+        .required(true)
+        .action(ArgAction::Set)
+        .value_name(name.to_ascii_uppercase())
+}
+
+pub fn flag_arg(name: &'static str, short: char, help: &str) -> Arg {
+    Arg::new(name)
+        .short(short)
+        .long(name)
+        .help(help.to_string())
+        .num_args(0)
+        .action(ArgAction::SetTrue)
+}
+
+fn subcommand(name: &'static str, help: &str, file_help: &str) -> ClapCommand {
+    ClapCommand::new(name)
+        .about(help.to_string())
+        .arg_required_else_help(true)
+        .subcommand_negates_reqs(true)
+        .arg(file_arg(file_help))
+}
+
+trait PartSubcommands {
+    fn with_part1(self, docs: &str) -> Self;
+
+    fn with_part2(self, docs: &str) -> Self;
+}
+
+impl PartSubcommands for ClapCommand {
+    fn with_part1(self, docs: &str) -> Self {
+        self.subcommand(ClapCommand::new("part1").about(docs.to_string()))
+    }
+
+    fn with_part2(self, docs: &str) -> Self {
+        self.subcommand(ClapCommand::new("part2").about(docs.to_string()))
     }
 }
 
-impl<T, U, R> CommandParser for ProblemWithOnePart<T, U, R>
-where
-    T: Clone + 'static,
-    U: 'static,
-    R: Into<CommandResult> + 'static,
-{
-    fn command(self) -> ParseCommand<impl Command> {
-        let file_name = file_name(self.problem.file_help);
-        let parser = (self.problem.argument_parser)();
-        let arguments = construct!(file_name, parser);
-        let part1 = part(
-            "part1",
-            self.part1.docs,
-            self.problem.name,
-            self.part1.value.clone(),
-        );
-        let parse_file = self.problem.parse_file;
-        let run = self.problem.run;
-
-        let options = construct!([part1, arguments])
-            .parse(parse_path)
-            .map(move |(file, arguments)| RunnableProblem {
-                file,
-                arguments,
-                parse_file,
-                run,
-            })
-            .to_options();
-
-        command(self.problem.name, options.descr(self.problem.about))
-    }
-}
-
-pub struct ProblemWithTwoParts<T, U, R>
-where
-    T: Clone + 'static,
-    U: 'static,
-    R: Into<CommandResult> + 'static,
-{
-    part1: ProblemWithOnePart<T, U, R>,
-    part2: ProblemPart<T>,
-}
-
-impl<T, U, R> CommandParser for ProblemWithTwoParts<T, U, R>
-where
-    T: Clone + 'static,
-    U: 'static,
-    R: Into<CommandResult> + 'static,
-{
-    fn command(self) -> ParseCommand<impl Command> {
-        let file_name = file_name(self.part1.problem.file_help);
-        let parser = (self.part1.problem.argument_parser)();
-        let arguments = construct!(file_name, parser);
-        let part1 = part(
-            "part1",
-            self.part1.part1.docs,
-            self.part1.problem.name,
-            self.part1.part1.value.clone(),
-        );
-        let part2 = part(
-            "part2",
-            self.part2.docs,
-            self.part1.problem.name,
-            self.part2.value.clone(),
-        );
-        let parse_file = self.part1.problem.parse_file;
-        let run = self.part1.problem.run;
-        let options = construct!([part1, part2, arguments])
-            .parse(parse_path)
-            .map(move |(file, arguments)| RunnableProblem {
-                file,
-                arguments,
-                parse_file,
-                run,
-            })
-            .to_options();
-
-        command(
-            self.part1.problem.name,
-            options.descr(self.part1.problem.about),
-        )
-    }
-}
-
-fn parse_path<T>((path, t): (PathBuf, T)) -> Result<(String, T), std::io::Error>
-where
-    T: Clone + 'static,
-{
-    File::open(path.as_path())
-        .and_then(|mut file| {
-            let mut result = String::new();
-            file.read_to_string(&mut result).map(|_| result)
-        })
-        .map(|contents| (contents, t))
-}
-
-struct ProblemPart<T>
-where
-    T: Clone + 'static,
-{
-    value: T,
-    docs: &'static str,
-}
-
-fn file_name(help: &str) -> impl ArgParser<PathBuf> {
-    short('f')
-        .long("file")
-        .help(help)
-        .argument::<PathBuf>("FILE")
-    //.complete_shell
-}
-
-fn part<T>(
-    name: &'static str,
-    docs: &'static str,
-    folder_name: &str,
-    value: T,
-) -> ParseCommand<(PathBuf, T)>
-where
-    T: Clone + 'static,
-{
-    let mut file = PathBuf::new();
-    file.push(format!("{}/input.txt", folder_name));
-    let file_parser = pure(file);
-    let value_parser = pure(value);
-    command(
-        name,
-        construct!(file_parser, value_parser)
-            .to_options()
-            .descr(docs),
-    )
+pub fn file_to_string(file_name: &PathBuf) -> Result<String, std::io::Error> {
+    File::open(file_name).and_then(|mut file| {
+        let mut result = String::new();
+        file.read_to_string(&mut result).map(|_| result)
+    })
 }
 
 pub fn parse_usize() -> impl Parser<char, usize, Error = Simple<char>> {

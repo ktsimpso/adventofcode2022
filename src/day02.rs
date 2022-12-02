@@ -1,7 +1,8 @@
-use adventofcode2022::{parse_lines, Problem, ProblemWithTwoParts};
-use bpaf::{construct, short, Parser as ArgParser};
+use std::cell::LazyCell;
+
+use adventofcode2022::{parse_lines, single_arg, Command, Problem};
 use chumsky::{prelude::Simple, primitive::just, Parser};
-use strum_macros::EnumString;
+use clap::{builder::EnumValueParser, ArgMatches, ValueEnum};
 
 #[derive(Debug, Clone)]
 pub enum Roshambo {
@@ -86,7 +87,7 @@ impl StrategyKey {
     }
 }
 
-#[derive(Debug, Clone, EnumString)]
+#[derive(Debug, ValueEnum, Clone)]
 pub enum Strategy {
     Roshambo,
     Outcome,
@@ -110,28 +111,29 @@ impl Round for (Roshambo, Outcome) {
 
 type ParseOutput = Vec<(Roshambo, StrategyKey)>;
 
-pub const DAY_02: ProblemWithTwoParts<Arguments, ParseOutput, usize> = Problem::new(
-    "day02",
-    "Parses and scores a secret strategy for a rock paper scissors tournament",
-    "Path to the input file. Input should be lines with value A, B, or C followed by X, Y, or Z separated by a space. The first character represents the opponents move and the second is our strategy",
-    parse_arguments,
-    parse_file,
-    run,
-)
-.with_part1(Arguments { strategy: Strategy::Roshambo }, "Our strategy is a certain value of Rock, Paper, or Scissors to use")
-.with_part2(Arguments { strategy: Strategy::Outcome }, "Our strategy is a target outcome to have");
+pub const DAY_02: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
+    let strategy = single_arg("strategy", 's', "The strategy to use in the game")
+        .value_parser(EnumValueParser::<Strategy>::new());
+    let problem = Problem::new(
+        "day02",
+        "Parses and scores a secret strategy for a rock paper scissors tournament",
+        "Path to the input file. Input should be lines with value A, B, or C followed by X, Y, or Z separated by a space. The first character represents the opponents move and the second is our strategy",
+    vec![strategy], parse_arguments, parse_file, run)
+        .with_part1(CommandLineArguments { strategy: Strategy::Roshambo }, "Our strategy is a certain value of Rock, Paper, or Scissors to use")
+        .with_part2(CommandLineArguments { strategy: Strategy::Outcome }, "Our strategy is a target outcome to have");
+    Box::new(problem)
+});
 
 #[derive(Debug, Clone)]
-pub struct Arguments {
+pub struct CommandLineArguments {
     strategy: Strategy,
 }
 
-fn parse_arguments() -> Box<dyn ArgParser<Arguments>> {
-    let strategy = short('s')
-        .long("strategy")
-        .help("The strategy to use in the game")
-        .argument::<Strategy>("STRATEGY");
-    Box::new(construct!(Arguments { strategy }))
+fn parse_arguments(args: &ArgMatches) -> CommandLineArguments {
+    let strategy = args.get_one::<Strategy>("strategy").expect("Required arg");
+    CommandLineArguments {
+        strategy: strategy.clone(),
+    }
 }
 
 fn parse_file(file: String) -> ParseOutput {
@@ -164,7 +166,7 @@ fn parse_strategy() -> impl Parser<char, StrategyKey, Error = Simple<char>> {
     lose.or(draw).or(win)
 }
 
-fn run(input: ParseOutput, arguments: Arguments) -> usize {
+fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
     let score = input
         .into_iter()
         .map(|(opponents_move, strategy_key)| match arguments.strategy {
