@@ -1,6 +1,6 @@
 [package]
 name = "adventofcode2022"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -8,3 +8,5 @@ edition = "2021"
 [dependencies]
 bpaf = "0.7.6"
 chumsky = "0.8.0"
+strum = "0.24.1"
+strum_macros = "0.24.1"
