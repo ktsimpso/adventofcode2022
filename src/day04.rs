@@ -1,33 +1,44 @@
-use adventofcode2022::{
-    parse_between_blank_lines, parse_lines, parse_usize, single_arg, Command, Problem,
-};
+use adventofcode2022::{parse_lines, parse_usize, single_arg, Command, Problem};
 use chumsky::{prelude::Simple, primitive::just, Parser};
-use clap::ArgMatches;
+use clap::{ArgMatches, ValueEnum};
 use std::cell::LazyCell;
 
 type ParseOutput = Vec<((usize, usize), (usize, usize))>;
 
 #[derive(Debug, Clone)]
-pub struct CommandLineArguments {}
+pub struct CommandLineArguments {
+    overlap: OverlapCountStrategy,
+}
+
+#[derive(Debug, Clone, ValueEnum)]
+pub enum OverlapCountStrategy {
+    Full,
+    Any,
+}
 
 fn parse_arguments(args: &ArgMatches) -> CommandLineArguments {
     CommandLineArguments {
-        //n: *args.get_one::<usize>("number").expect("Valid arguments"),
+        overlap: args
+            .get_one::<OverlapCountStrategy>("overlap")
+            .expect("Valid arguments")
+            .clone(),
     }
 }
 
 pub const DAY_04: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
+    let overlap = single_arg("overlap", 'o', "The overlap count strategy. Use Full to count only full overlapping work, or Any for partial overlapping")
+        .value_parser(clap::value_parser!(OverlapCountStrategy));
     let problem = Problem::new(
         "day04",
         "Counts the number of elf paris which have overlapping work.",
         "Path to the input file. Each line is a comma serperated pair of work sections. Each work section start and end section is seperated by a -",
-        vec![],
+        vec![overlap],
         parse_arguments,
         parse_file,
         run,
     )
-    .with_part1(CommandLineArguments {}, "Counts the number of elf pairs where one is fully overlapping");
-    //.with_part2(CommandLineArguments {}, "part 2 help");
+    .with_part1(CommandLineArguments { overlap: OverlapCountStrategy::Full }, "Counts the number of elf pairs where one is fully overlapping")
+    .with_part2(CommandLineArguments { overlap: OverlapCountStrategy::Any }, "Counts the number of elf pairs with any overlapping");
     Box::new(problem)
 });
 
@@ -50,9 +61,18 @@ fn parse_pair() -> impl Parser<char, (usize, usize), Error = Simple<char>> {
 fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
     input
         .into_iter()
-        .filter(|((first_start, first_end), (second_start, second_end))| {
-            (first_start <= second_start && first_end >= second_end)
-                || (second_start <= first_start && second_end >= first_end)
-        })
+        .filter(
+            |((first_start, first_end), (second_start, second_end))| match arguments.overlap {
+                OverlapCountStrategy::Full => {
+                    (first_start <= second_start && first_end >= second_end)
+                        || (second_start <= first_start && second_end >= first_end)
+                }
+                OverlapCountStrategy::Any => {
+                    (first_start < second_start && second_start <= first_end)
+                        || (second_start < first_start && first_start <= second_end)
+                        || first_start == second_start
+                }
+            },
+        )
         .count()
 }
