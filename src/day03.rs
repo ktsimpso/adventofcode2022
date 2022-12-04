@@ -1,7 +1,11 @@
 use std::{cell::LazyCell, collections::BTreeSet};
 
 use adventofcode2022::{flag_arg, parse_lines, single_arg, Command, Problem};
-use chumsky::{prelude::Simple, primitive::one_of, Parser};
+use chumsky::{
+    prelude::Simple,
+    primitive::{end, one_of},
+    Parser,
+};
 use clap::ArgMatches;
 use itertools::Itertools;
 
@@ -48,7 +52,7 @@ fn parser() -> impl Parser<char, ParseOutput, Error = Simple<char>> {
     let mut upper = ('A'..='Z').collect::<String>();
     let lower = ('a'..='z').collect::<String>();
     upper.push_str(&lower);
-    parse_lines(one_of(upper).repeated())
+    parse_lines(one_of(upper).repeated()).then_ignore(end())
 }
 
 fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {

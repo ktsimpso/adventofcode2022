@@ -1,7 +1,11 @@
 use std::cell::LazyCell;
 
 use adventofcode2022::{parse_lines, single_arg, Command, Problem};
-use chumsky::{prelude::Simple, primitive::just, Parser};
+use chumsky::{
+    prelude::Simple,
+    primitive::{end, just},
+    Parser,
+};
 use clap::{builder::EnumValueParser, ArgMatches, ValueEnum};
 
 #[derive(Debug, Clone)]
@@ -141,7 +145,7 @@ fn parse_file(file: String) -> ParseOutput {
 }
 
 fn parser() -> impl Parser<char, ParseOutput, Error = Simple<char>> {
-    parse_lines(parse_game())
+    parse_lines(parse_game()).then_ignore(end())
 }
 
 fn parse_game() -> impl Parser<char, (Roshambo, StrategyKey), Error = Simple<char>> {

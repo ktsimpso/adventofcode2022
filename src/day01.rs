@@ -1,7 +1,7 @@
 use adventofcode2022::{
     parse_between_blank_lines, parse_lines, parse_usize, single_arg, Command, Problem,
 };
-use chumsky::{prelude::Simple, Parser};
+use chumsky::{prelude::Simple, primitive::end, Parser};
 use clap::ArgMatches;
 use std::cell::LazyCell;
 
@@ -36,7 +36,7 @@ fn parse_file(file: String) -> ParseOutput {
 }
 
 fn parser() -> impl Parser<char, ParseOutput, Error = Simple<char>> {
-    parse_between_blank_lines(parse_lines(parse_usize()))
+    parse_between_blank_lines(parse_lines(parse_usize())).then_ignore(end())
 }
 
 fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {

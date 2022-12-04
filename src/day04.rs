@@ -1,5 +1,9 @@
 use adventofcode2022::{parse_lines, parse_usize, single_arg, Command, Problem};
-use chumsky::{prelude::Simple, primitive::just, Parser};
+use chumsky::{
+    prelude::Simple,
+    primitive::{end, just},
+    Parser,
+};
 use clap::{ArgMatches, ValueEnum};
 use std::cell::LazyCell;
 
@@ -47,7 +51,7 @@ fn parse_file(file: String) -> ParseOutput {
 }
 
 fn parser() -> impl Parser<char, ParseOutput, Error = Simple<char>> {
-    parse_lines(parse_group())
+    parse_lines(parse_group()).then_ignore(end())
 }
 
 fn parse_group() -> impl Parser<char, ((usize, usize), (usize, usize)), Error = Simple<char>> {

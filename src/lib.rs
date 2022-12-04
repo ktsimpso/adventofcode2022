@@ -252,10 +252,11 @@ pub fn parse_chunks<T>(
     chunker: impl Parser<char, Vec<Vec<char>>, Error = Simple<char>>,
     chunk_parser: impl Parser<char, T, Error = Simple<char>>,
 ) -> impl Parser<char, Vec<T>, Error = Simple<char>> {
+    let terminated_chunk_parser = chunk_parser.then_ignore(end());
     chunker.try_map(move |chunks, span| {
         chunks
             .into_iter()
-            .map(|chunk| chunk_parser.parse(chunk))
+            .map(|chunk| terminated_chunk_parser.parse(chunk))
             .collect::<Result<Vec<T>, _>>()
             .map_err(|ops| {
                 Simple::custom(
