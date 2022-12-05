@@ -24,6 +24,7 @@ use std::{
 pub enum CommandResult {
     Isize(isize),
     Usize(usize),
+    String(String),
 }
 
 impl Display for CommandResult {
@@ -31,6 +32,7 @@ impl Display for CommandResult {
         match self {
             CommandResult::Isize(val) => val.fmt(f),
             CommandResult::Usize(val) => val.fmt(f),
+            CommandResult::String(val) => val.fmt(f),
         }
     }
 }
@@ -44,6 +46,12 @@ impl From<isize> for CommandResult {
 impl From<usize> for CommandResult {
     fn from(item: usize) -> Self {
         CommandResult::Usize(item)
+    }
+}
+
+impl From<String> for CommandResult {
+    fn from(item: String) -> Self {
+        CommandResult::String(item)
     }
 }
 
