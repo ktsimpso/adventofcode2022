@@ -1,4 +1,5 @@
-use adventofcode2022::{parse_lines, parse_usize, single_arg, Command, Problem};
+use adventofcode2022::{parse_lines, parse_usize, single_arg, Command, ParseError, Problem};
+use anyhow::Result;
 use chumsky::{
     prelude::Simple,
     primitive::{end, just},
@@ -46,8 +47,10 @@ pub const DAY_04: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     Box::new(problem)
 });
 
-fn parse_file(file: String) -> ParseOutput {
-    parser().parse(file).unwrap()
+fn parse_file(file: String) -> Result<ParseOutput> {
+    parser()
+        .parse(file.clone())
+        .map_err(|e| ParseError(file, e).into())
 }
 
 fn parser() -> impl Parser<char, ParseOutput, Error = Simple<char>> {

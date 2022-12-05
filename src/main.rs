@@ -1,9 +1,9 @@
 #![feature(once_cell)]
 
-use std::cell::LazyCell;
-
-use adventofcode2022::Command;
+use adventofcode2022::{Command, CommandResult};
+use anyhow::Result;
 use clap::Command as ClapCommand;
+use std::cell::LazyCell;
 
 mod day01;
 mod day02;
@@ -12,7 +12,7 @@ mod day04;
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
-fn main() {
+fn main() -> Result<()> {
     let commands: Vec<(&str, LazyCell<Box<dyn Command>>)> =
         vec![day01::DAY_01, day02::DAY_02, day03::DAY_03, day04::DAY_04]
             .into_iter()
@@ -36,5 +36,10 @@ fn main() {
                 .subcommand_matches(name)
                 .map(|args| command.run(args))
         })
-        .for_each(|result| println!("{}", result))
+        .collect::<Result<Vec<CommandResult>>>()
+        .map(|results| {
+            results
+                .into_iter()
+                .for_each(|result| println!("{}", result))
+        })
 }

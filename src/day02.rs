@@ -1,6 +1,7 @@
 use std::cell::LazyCell;
 
-use adventofcode2022::{parse_lines, single_arg, Command, Problem};
+use adventofcode2022::{parse_lines, single_arg, Command, ParseError, Problem};
+use anyhow::Result;
 use chumsky::{
     prelude::Simple,
     primitive::{end, just},
@@ -140,8 +141,10 @@ fn parse_arguments(args: &ArgMatches) -> CommandLineArguments {
     }
 }
 
-fn parse_file(file: String) -> ParseOutput {
-    parser().parse(file).unwrap()
+fn parse_file(file: String) -> Result<ParseOutput> {
+    parser()
+        .parse(file.clone())
+        .map_err(|e| ParseError(file, e).into())
 }
 
 fn parser() -> impl Parser<char, ParseOutput, Error = Simple<char>> {

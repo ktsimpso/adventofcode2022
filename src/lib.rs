@@ -1,6 +1,9 @@
 #![feature(once_cell)]
 
+use anyhow::Result;
+use ariadne::{Color, Fmt, Label, Report, ReportKind, Source};
 use chumsky::{
+    error::SimpleReason,
     prelude::Simple,
     primitive::{end, just, take_until},
     text::{self, newline},
@@ -9,7 +12,9 @@ use chumsky::{
 use clap::{
     builder::PathBufValueParser, Arg, ArgAction, ArgMatches, Command as ClapCommand, ValueHint,
 };
+use itertools::Itertools;
 use std::{
+    error::Error,
     fmt::{self, Display},
     fs::File,
     io::Read,
@@ -42,8 +47,108 @@ impl From<usize> for CommandResult {
     }
 }
 
+#[derive(Debug)]
+pub struct ParseError(pub String, pub Vec<Simple<char>>);
+
+impl Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", combine_parse_errors(&self.0, &self.1))
+    }
+}
+
+impl Error for ParseError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
+
+    fn cause(&self) -> Option<&dyn Error> {
+        self.source()
+    }
+}
+
+pub fn combine_parse_errors(source: &String, errors: &Vec<Simple<char>>) -> String {
+    errors
+        .iter()
+        .map(|e| format_parse_error(source, &e))
+        .join("\n")
+}
+
+pub fn format_parse_error(source: &String, error: &Simple<char>) -> String {
+    let report = Report::build(ReportKind::Error, (), error.span().start);
+
+    let report = match error.reason() {
+        SimpleReason::Unclosed { span, delimiter } => report
+            .with_message(format!(
+                "Unclosed delimiter {}",
+                delimiter.fg(Color::Yellow)
+            ))
+            .with_label(
+                Label::new(span.clone())
+                    .with_message(format!(
+                        "Unclosed delimiter {}",
+                        delimiter.fg(Color::Yellow)
+                    ))
+                    .with_color(Color::Yellow),
+            )
+            .with_label(
+                Label::new(error.span())
+                    .with_message(format!(
+                        "Must be closed before this {}",
+                        error
+                            .found()
+                            .map(|c| c.to_string())
+                            .unwrap_or("end of file".escape_default().to_string())
+                            .fg(Color::Red)
+                    ))
+                    .with_color(Color::Red),
+            ),
+        SimpleReason::Unexpected => report
+            .with_message(format!(
+                "{}, expected {}",
+                if error.found().is_some() {
+                    "Unexpected token in input"
+                } else {
+                    "Unexpected end of input"
+                },
+                if error.expected().len() == 0 {
+                    "end of input".to_string()
+                } else {
+                    error
+                        .expected()
+                        .map(|expected| match expected {
+                            Some(expected) => {
+                                format!("'{}'", expected.escape_default())
+                            }
+                            None => "end of input".to_string(),
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                }
+            ))
+            .with_label(
+                Label::new(error.span())
+                    .with_message(format!(
+                        "Unexpected token '{}'",
+                        error
+                            .found()
+                            .map(|c| c.to_string())
+                            .unwrap_or("end of file".to_string())
+                            .fg(Color::Red)
+                    ))
+                    .with_color(Color::Red),
+            ),
+        SimpleReason::Custom(msg) => return msg.clone(),
+    };
+    let mut buf = vec![];
+    let finished_report = report.finish();
+    finished_report
+        .write(Source::from(&source), &mut buf)
+        .unwrap();
+    std::str::from_utf8(&buf[..]).unwrap().to_string()
+}
+
 pub trait Command {
-    fn run(&self, args: &ArgMatches) -> CommandResult;
+    fn run(&self, args: &ArgMatches) -> Result<CommandResult>;
 
     fn get_name(&self) -> &'static str;
 
@@ -60,7 +165,7 @@ where
     part1_data: Option<T>,
     part2_data: Option<T>,
     parse_args: fn(&ArgMatches) -> T,
-    parse_file: fn(String) -> U,
+    parse_file: fn(String) -> Result<U>,
     run: fn(U, T) -> R,
 }
 
@@ -75,7 +180,7 @@ where
         file_help: &str,
         args: Vec<Arg>,
         parse_args: fn(&ArgMatches) -> T,
-        parse_file: fn(String) -> U,
+        parse_file: fn(String) -> Result<U>,
         run: fn(U, T) -> R,
     ) -> Self {
         let subcommand = subcommand(name, help, file_help).args(args);
@@ -138,10 +243,10 @@ where
     T: Clone,
     R: Into<CommandResult>,
 {
-    fn run(&self, args: &ArgMatches) -> CommandResult {
+    fn run(&self, args: &ArgMatches) -> Result<CommandResult> {
         let (file_contents, arg) = self.parse_matches(args);
         let parse_result = (self.parse_file)(file_contents);
-        (self.run)(parse_result, arg).into()
+        parse_result.map(|parsed| (self.run)(parsed, arg).into())
     }
 
     fn get_name(&self) -> &'static str {
@@ -255,18 +360,21 @@ pub fn parse_chunks<T>(
     let terminated_chunk_parser = chunk_parser.then_ignore(end());
     chunker.try_map(move |chunks, span| {
         chunks
+            .clone()
             .into_iter()
-            .map(|chunk| terminated_chunk_parser.parse(chunk))
-            .collect::<Result<Vec<T>, _>>()
-            .map_err(|ops| {
-                Simple::custom(
-                    span,
-                    ops.into_iter()
-                        .map(|op| op.to_string())
-                        .collect::<Vec<_>>()
-                        .join("\n"),
-                )
+            .map(|chunk| {
+                terminated_chunk_parser
+                    .parse(chunk.clone())
+                    .map_err(|errors| {
+                        let input = chunk.into_iter().collect::<String>();
+                        let message = errors
+                            .into_iter()
+                            .map(|error| format_parse_error(&input, &error))
+                            .join("\n");
+                        Simple::custom(span.clone(), message)
+                    })
             })
+            .collect::<Result<Vec<T>, _>>()
     })
 }
 

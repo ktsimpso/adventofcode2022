@@ -1,6 +1,7 @@
 use adventofcode2022::{
-    parse_between_blank_lines, parse_lines, parse_usize, single_arg, Command, Problem,
+    parse_between_blank_lines, parse_lines, parse_usize, single_arg, Command, ParseError, Problem,
 };
+use anyhow::Result;
 use chumsky::{prelude::Simple, primitive::end, Parser};
 use clap::ArgMatches;
 use std::cell::LazyCell;
@@ -31,8 +32,10 @@ fn parse_arguments(args: &ArgMatches) -> CommandLineArguments {
     }
 }
 
-fn parse_file(file: String) -> ParseOutput {
-    parser().parse(file).unwrap()
+fn parse_file(file: String) -> Result<ParseOutput> {
+    parser()
+        .parse(file.clone())
+        .map_err(|e| ParseError(file, e).into())
 }
 
 fn parser() -> impl Parser<char, ParseOutput, Error = Simple<char>> {
