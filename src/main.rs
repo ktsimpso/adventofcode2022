@@ -3,7 +3,10 @@
 use adventofcode2022::{Command, CommandResult};
 use anyhow::Result;
 use clap::Command as ClapCommand;
-use std::cell::LazyCell;
+use std::{
+    cell::LazyCell,
+    time::{Duration, Instant},
+};
 
 mod day01;
 mod day02;
@@ -30,8 +33,10 @@ fn main() -> Result<()> {
         .iter()
         .map(|(_, command)| command.get_subcommand())
         .collect::<Vec<_>>();
+
     let matches = ClapCommand::new("Advent of Code 2022")
         .version(VERSION)
+        .about("Run the advent of code problems from this main program")
         .arg_required_else_help(true)
         .subcommand_required(true)
         .subcommands(subcommands)
@@ -40,14 +45,19 @@ fn main() -> Result<()> {
     commands
         .into_iter()
         .filter_map(|(name, command)| {
-            matches
-                .subcommand_matches(name)
-                .map(|args| command.run(args))
+            matches.subcommand_matches(name).map(|args| {
+                println!("=============Running {:}=============", command.get_name());
+                let now = Instant::now();
+                let result = command.run(args);
+                let elapsed = now.elapsed();
+                result.map(|r| (r, elapsed))
+            })
         })
-        .collect::<Result<Vec<CommandResult>>>()
+        .collect::<Result<Vec<(CommandResult, Duration)>>>()
         .map(|results| {
-            results
-                .into_iter()
-                .for_each(|result| println!("{}", result))
+            results.into_iter().for_each(|(result, elapsed)| {
+                println!("{}", result);
+                println!("Took {:#?} to run", elapsed)
+            })
         })
 }
