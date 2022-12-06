@@ -2,25 +2,34 @@ use adventofcode2022::{
     parse_between_blank_lines, parse_lines, parse_usize, single_arg, Command, ParseError, Problem,
 };
 use anyhow::Result;
-use chumsky::{prelude::Simple, primitive::end, primitive::todo, Parser};
+use chumsky::{
+    chain::Chain,
+    prelude::Simple,
+    primitive::todo,
+    primitive::{end, take_until},
+    text, Parser,
+};
 use clap::ArgMatches;
-use std::cell::LazyCell;
+use std::{cell::LazyCell, collections::BTreeSet};
 
-type ParseOutput = Vec<Vec<usize>>;
+type ParseOutput = Vec<char>;
 
 pub const DAY_06: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     //let number = single_arg("number", 'n', "The number of elves to sum")
     //    .value_parser(clap::value_parser!(usize));
     let problem = Problem::new(
         "day06",
-        "day6 help",
-        "Path to the input file. input file help",
+        "day6 finds unique sets of strings in a message packet.",
+        "Path to the input file. Input should be one line for the message",
         vec![],
         parse_arguments,
         parse_file,
         run,
     )
-    .with_part1(CommandLineArguments {}, "part 1 help");
+    .with_part1(
+        CommandLineArguments {},
+        "finds the first set of 4 unique characters in the input string.",
+    );
     //.with_part2(CommandLineArguments {}, "part 2 help");
     Box::new(problem)
 });
@@ -41,10 +50,18 @@ fn parse_file(file: String) -> Result<ParseOutput> {
 }
 
 fn parser() -> impl Parser<char, ParseOutput, Error = Simple<char>> {
-    //parse_between_blank_lines(parse_lines(parse_usize())).then_ignore(end())
-    todo()
+    take_until(text::newline())
+        .map(|(r, _)| r)
+        .then_ignore(end())
 }
 
 fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
-    0
+    input
+        .windows(4)
+        .into_iter()
+        .enumerate()
+        .find(|(_, chars)| chars.into_iter().cloned().collect::<BTreeSet<char>>().len() == 4)
+        .map(|(position, _)| position)
+        .expect("valid message")
+        + 4
 }
