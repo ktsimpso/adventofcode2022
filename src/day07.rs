@@ -1,39 +1,43 @@
-use adventofcode2022::{
-    parse_between_blank_lines, parse_lines, parse_usize, single_arg, Command, ParseError, Problem,
-};
+use adventofcode2022::{parse_lines, parse_usize, single_arg, Command, ParseError, Problem};
 use anyhow::Result;
 use chumsky::{
     prelude::Simple,
     primitive::end,
-    primitive::{just, take_until, todo},
-    text, Error, Parser,
+    primitive::{just, take_until},
+    text, Parser,
 };
 use clap::ArgMatches;
-use itertools::Itertools;
 use std::cell::LazyCell;
 
 type ParseOutput = Vec<TerminalOutput>;
 
 pub const DAY_07: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
-    //let number = single_arg("number", 'n', "The number of elves to sum")
-    //    .value_parser(clap::value_parser!(usize));
+    let threshold = single_arg("threshold", 't', "The largest directory to sum.")
+        .value_parser(clap::value_parser!(usize));
+    let space = single_arg(
+        "space",
+        's',
+        "The space required to free up in the file system",
+    )
+    .value_parser(clap::value_parser!(usize))
+    .conflicts_with("threshold");
     let problem = Problem::new(
         "day07",
         "Reads terminal output then gives stats on the file size for folders found in the terminal output.",
         "Path to the input file. The output of one terminal session of the elf computer.",
-        vec![],
+        vec![threshold, space],
         parse_arguments,
         parse_file,
         run,
     )
-    .with_part1(CommandLineArguments {}, "Finds all the folder with size less than 100_000 and sums their total.");
-    //.with_part2(CommandLineArguments { }, "Part 2 help");
+    .with_part1(CommandLineArguments { find_strategy: FindStrategy::SumThreshold { threshold: 100_000 }}, "Finds all the folder with size less than 100_000 and sums their total.")
+    .with_part2(CommandLineArguments { find_strategy: FindStrategy::MinFree { space_needed: 30_000_000 } }, "Finds the smallest directory to delete to make space for 30_000_000 bytes.");
     Box::new(problem)
 });
 
 #[derive(Debug, Clone)]
 pub struct CommandLineArguments {
-    //n: usize,
+    find_strategy: FindStrategy,
 }
 
 #[derive(Debug, Clone)]
@@ -61,10 +65,29 @@ pub enum TerminalOutput {
     ElfFile(ElfFile),
 }
 
+#[derive(Debug, Clone)]
+pub enum FindStrategy {
+    SumThreshold { threshold: usize },
+    MinFree { space_needed: usize },
+}
+
 fn parse_arguments(args: &ArgMatches) -> CommandLineArguments {
-    CommandLineArguments {
-        //n: *args.get_one::<usize>("number").expect("Valid arguments"),
-    }
+    let threshold =
+        args.get_one::<usize>("threshold")
+            .map(|threshold| FindStrategy::SumThreshold {
+                threshold: *threshold,
+            });
+    let space = args
+        .get_one::<usize>("space")
+        .map(|space| FindStrategy::MinFree {
+            space_needed: *space,
+        });
+    let find_strategy = match (threshold, space) {
+        (Some(threshold), None) => threshold,
+        (None, Some(space)) => space,
+        _ => unreachable!(),
+    };
+    CommandLineArguments { find_strategy }
 }
 
 fn parse_file(file: String) -> Result<ParseOutput> {
@@ -197,19 +220,34 @@ fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
         },
     });
 
-    arena
+    let directory_sizes = arena
         .files
         .iter()
         .filter(|file| match file.file {
             ElfFile::Directory(_) => true,
             _ => false,
         })
-        .map(|dir| du(&arena, dir))
-        .filter(|value| *value <= 100_000)
-        .sum()
+        .map(|dir| disk_usage(&arena, dir));
+
+    match arguments.find_strategy {
+        FindStrategy::SumThreshold { threshold } => {
+            directory_sizes.filter(|value| value <= &threshold).sum()
+        }
+        FindStrategy::MinFree { space_needed } => {
+            let max = 70_000_000_usize;
+            let current = disk_usage(&arena, &arena.files.get(0).expect("Root exists"));
+            let space_needed = space_needed - (max - current);
+
+            let mut big_dirs = directory_sizes
+                .filter(|value| value >= &space_needed)
+                .collect::<Vec<usize>>();
+            big_dirs.sort();
+            *big_dirs.get(0).expect("At least one valid dir")
+        }
+    }
 }
 
-fn du(arena: &Arena, directory: &FileSystem) -> usize {
+fn disk_usage(arena: &Arena, directory: &FileSystem) -> usize {
     directory
         .children
         .iter()
@@ -217,7 +255,7 @@ fn du(arena: &Arena, directory: &FileSystem) -> usize {
             let child = arena.files.get(*file_index).expect("Valid index");
 
             match child.file {
-                ElfFile::Directory(_) => du(arena, child),
+                ElfFile::Directory(_) => disk_usage(arena, child),
                 ElfFile::File(_, len) => len,
             }
         })
