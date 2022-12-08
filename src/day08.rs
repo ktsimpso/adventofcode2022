@@ -1,39 +1,46 @@
-use adventofcode2022::{
-    parse_between_blank_lines, parse_lines, parse_usize, single_arg, Command, ParseError, Problem,
-};
+use adventofcode2022::{parse_lines, parse_usize, single_arg, Command, ParseError, Problem};
 use anyhow::Result;
-use chumsky::{prelude::Simple, primitive::end, primitive::one_of, primitive::todo, text, Parser};
-use clap::ArgMatches;
+use chumsky::{prelude::Simple, primitive::end, primitive::one_of, Parser};
+use clap::{ArgMatches, ValueEnum};
 use itertools::Itertools;
 use std::cell::LazyCell;
 
 type ParseOutput = Vec<Vec<usize>>;
 
 pub const DAY_08: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
-    //let number = single_arg("number", 'n', "The number of elves to sum")
-    //    .value_parser(clap::value_parser!(usize));
+    let survey = single_arg("survey", 's', "The type of survey to preform")
+        .value_parser(clap::value_parser!(Survey));
     let problem = Problem::new(
         "day08",
         "Servey's a forest and gives stats about the visibility of trees in the forest",
         "Path to the input file. Should consist of lines of and equal number of integers between 0-9",
-        vec![],
+        vec![survey],
         parse_arguments,
         parse_file,
         run,
     )
-    .with_part1(CommandLineArguments {}, "Counts the number of trees that are visible from the edge of the forest.");
-    //.with_part2(CommandLineArguments {}, "part 2 help");
+    .with_part1(CommandLineArguments { survey: Survey::VisibleTrees }, "Counts the number of trees that are visible from the edge of the forest.")
+    .with_part2(CommandLineArguments { survey: Survey::BestTree }, "Finds the highest scoring tree in the forest and returns it's score.");
     Box::new(problem)
 });
 
+#[derive(Debug, Clone, ValueEnum)]
+pub enum Survey {
+    VisibleTrees,
+    BestTree,
+}
+
 #[derive(Debug, Clone)]
 pub struct CommandLineArguments {
-    //n: usize,
+    survey: Survey,
 }
 
 fn parse_arguments(args: &ArgMatches) -> CommandLineArguments {
     CommandLineArguments {
-        //n: *args.get_one::<usize>("number").expect("Valid arguments"),
+        survey: args
+            .get_one::<Survey>("survey")
+            .expect("Valid arguments")
+            .clone(),
     }
 }
 
@@ -60,16 +67,117 @@ fn parser() -> impl Parser<char, ParseOutput, Error = Simple<char>> {
 }
 
 fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
-    input
+    let rows = input
         .iter()
         .enumerate()
-        .map(|(y, row)| {
-            row.iter()
+        .map(|(y, row)| match arguments.survey {
+            Survey::VisibleTrees => row
+                .iter()
                 .enumerate()
                 .filter(|(x, _)| is_visible(*x, y, &input))
-                .count()
-        })
-        .sum()
+                .count(),
+            Survey::BestTree => row
+                .iter()
+                .enumerate()
+                .map(|(x, _)| get_score(x, y, &input))
+                .max()
+                .unwrap_or(0),
+        });
+    match arguments.survey {
+        Survey::VisibleTrees => rows.sum(),
+        Survey::BestTree => rows.max().unwrap_or(0),
+    }
+}
+
+fn get_score(x: usize, y: usize, forest: &Vec<Vec<usize>>) -> usize {
+    get_score_left(x, y, forest)
+        * get_score_right(x, y, forest)
+        * get_score_down(x, y, forest)
+        * get_score_up(x, y, forest)
+}
+
+fn get_score_left(x: usize, y: usize, forest: &Vec<Vec<usize>>) -> usize {
+    let mut current = x;
+    let mut count = 0;
+    let height = forest.get(y).expect("valid y").get(x).expect("valid x");
+
+    while current > 0 {
+        current -= 1;
+        count += 1;
+        let other = forest
+            .get(y)
+            .expect("valid y")
+            .get(current)
+            .expect("valid x");
+        if other >= height {
+            break;
+        }
+    }
+
+    count
+}
+
+fn get_score_right(x: usize, y: usize, forest: &Vec<Vec<usize>>) -> usize {
+    let mut current = x;
+    let mut count = 0;
+    let height = forest.get(y).expect("valid y").get(x).expect("valid x");
+
+    while current < forest.get(0).expect("At least 1 row").len() - 1 {
+        current += 1;
+        count += 1;
+        let other = forest
+            .get(y)
+            .expect("valid y")
+            .get(current)
+            .expect("valid x");
+        if other >= height {
+            break;
+        }
+    }
+
+    count
+}
+
+fn get_score_up(x: usize, y: usize, forest: &Vec<Vec<usize>>) -> usize {
+    let mut current = y;
+    let mut count = 0;
+    let height = forest.get(y).expect("valid y").get(x).expect("valid x");
+
+    while current > 0 {
+        current -= 1;
+        count += 1;
+        let other = forest
+            .get(current)
+            .expect("valid y")
+            .get(x)
+            .expect("valid x");
+        if other >= height {
+            break;
+        }
+    }
+
+    count
+}
+
+fn get_score_down(x: usize, y: usize, forest: &Vec<Vec<usize>>) -> usize {
+    let mut current = y;
+    let mut count = 0;
+    let height = forest.get(y).expect("valid y").get(x).expect("valid x");
+
+    while current < forest.len() - 1 {
+        current += 1;
+        count += 1;
+        let other = forest
+            .get(current)
+            .expect("valid y")
+            .get(x)
+            .expect("valid x");
+        if other >= height {
+            break;
+        }
+    }
+
+    count
 }
 
 fn is_visible(x: usize, y: usize, forest: &Vec<Vec<usize>>) -> bool {
