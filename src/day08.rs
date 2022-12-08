@@ -66,6 +66,98 @@ fn parser() -> impl Parser<char, ParseOutput, Error = Simple<char>> {
     .then_ignore(end())
 }
 
+#[derive(Debug, Clone, Copy)]
+struct BoundedPoint {
+    x: usize,
+    y: usize,
+    max_x: usize,
+    max_y: usize,
+}
+
+impl BoundedPoint {
+    fn into_iter_direction(self, point_direction: PointDirection) -> BoundedPointIntoIterator {
+        BoundedPointIntoIterator {
+            point: self,
+            direction: point_direction,
+        }
+    }
+
+    fn get_adjacent(self, point_direction: &PointDirection) -> Option<BoundedPoint> {
+        match point_direction {
+            PointDirection::Up => {
+                if self.y > 0 {
+                    Some(BoundedPoint {
+                        x: self.x,
+                        y: self.y - 1,
+                        max_x: self.max_x,
+                        max_y: self.max_y,
+                    })
+                } else {
+                    None
+                }
+            }
+            PointDirection::Down => {
+                if self.y < self.max_y {
+                    Some(BoundedPoint {
+                        x: self.x,
+                        y: self.y + 1,
+                        max_x: self.max_x,
+                        max_y: self.max_y,
+                    })
+                } else {
+                    None
+                }
+            }
+            PointDirection::Left => {
+                if self.x > 0 {
+                    Some(BoundedPoint {
+                        x: self.x - 1,
+                        y: self.y,
+                        max_x: self.max_x,
+                        max_y: self.max_y,
+                    })
+                } else {
+                    None
+                }
+            }
+            PointDirection::Right => {
+                if self.x < self.max_x {
+                    Some(BoundedPoint {
+                        x: self.x + 1,
+                        y: self.y,
+                        max_x: self.max_x,
+                        max_y: self.max_y,
+                    })
+                } else {
+                    None
+                }
+            }
+        }
+    }
+}
+
+enum PointDirection {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+struct BoundedPointIntoIterator {
+    point: BoundedPoint,
+    direction: PointDirection,
+}
+
+impl Iterator for BoundedPointIntoIterator {
+    type Item = BoundedPoint;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let result = self.point.get_adjacent(&self.direction);
+        result.iter().for_each(|point| self.point = *point);
+        result
+    }
+}
+
 fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
     let rows = input
         .iter()
@@ -89,184 +181,62 @@ fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
     }
 }
 
+fn get_bounded_point(x: usize, y: usize, forest: &Vec<Vec<usize>>) -> BoundedPoint {
+    let max_x = forest.get(0).expect("At least 1 row").len() - 1;
+    let max_y = forest.len() - 1;
+    BoundedPoint { x, y, max_x, max_y }
+}
+
 fn get_score(x: usize, y: usize, forest: &Vec<Vec<usize>>) -> usize {
-    get_score_left(x, y, forest)
-        * get_score_right(x, y, forest)
-        * get_score_down(x, y, forest)
-        * get_score_up(x, y, forest)
+    let point = get_bounded_point(x, y, forest);
+    let height = forest.get(y).expect("valid y").get(x).expect("valid x");
+    get_score_direction(&point, height, forest, PointDirection::Left)
+        * get_score_direction(&point, height, forest, PointDirection::Right)
+        * get_score_direction(&point, height, forest, PointDirection::Up)
+        * get_score_direction(&point, height, forest, PointDirection::Down)
 }
 
-fn get_score_left(x: usize, y: usize, forest: &Vec<Vec<usize>>) -> usize {
-    let mut current = x;
-    let mut count = 0;
-    let height = forest.get(y).expect("valid y").get(x).expect("valid x");
-
-    while current > 0 {
-        current -= 1;
-        count += 1;
-        let other = forest
-            .get(y)
-            .expect("valid y")
-            .get(current)
-            .expect("valid x");
-        if other >= height {
-            break;
-        }
-    }
-
-    count
-}
-
-fn get_score_right(x: usize, y: usize, forest: &Vec<Vec<usize>>) -> usize {
-    let mut current = x;
-    let mut count = 0;
-    let height = forest.get(y).expect("valid y").get(x).expect("valid x");
-
-    while current < forest.get(0).expect("At least 1 row").len() - 1 {
-        current += 1;
-        count += 1;
-        let other = forest
-            .get(y)
-            .expect("valid y")
-            .get(current)
-            .expect("valid x");
-        if other >= height {
-            break;
-        }
-    }
-
-    count
-}
-
-fn get_score_up(x: usize, y: usize, forest: &Vec<Vec<usize>>) -> usize {
-    let mut current = y;
-    let mut count = 0;
-    let height = forest.get(y).expect("valid y").get(x).expect("valid x");
-
-    while current > 0 {
-        current -= 1;
-        count += 1;
-        let other = forest
-            .get(current)
-            .expect("valid y")
-            .get(x)
-            .expect("valid x");
-        if other >= height {
-            break;
-        }
-    }
-
-    count
-}
-
-fn get_score_down(x: usize, y: usize, forest: &Vec<Vec<usize>>) -> usize {
-    let mut current = y;
-    let mut count = 0;
-    let height = forest.get(y).expect("valid y").get(x).expect("valid x");
-
-    while current < forest.len() - 1 {
-        current += 1;
-        count += 1;
-        let other = forest
-            .get(current)
-            .expect("valid y")
-            .get(x)
-            .expect("valid x");
-        if other >= height {
-            break;
-        }
-    }
-
-    count
+fn get_score_direction(
+    point: &BoundedPoint,
+    height: &usize,
+    forest: &Vec<Vec<usize>>,
+    direction: PointDirection,
+) -> usize {
+    let mut point_iter = point.into_iter_direction(direction).peekable();
+    point_iter
+        .peeking_take_while(|new_point| {
+            forest
+                .get(new_point.y)
+                .expect("valid y")
+                .get(new_point.x)
+                .expect("valid x")
+                < height
+        })
+        .count()
+        + point_iter.next().into_iter().count()
 }
 
 fn is_visible(x: usize, y: usize, forest: &Vec<Vec<usize>>) -> bool {
-    is_visible_left(x, y, forest)
-        || is_visible_right(x, y, forest)
-        || is_visible_down(x, y, forest)
-        || is_visible_up(x, y, forest)
+    let point = get_bounded_point(x, y, forest);
+    let height = forest.get(y).expect("valid y").get(x).expect("valid x");
+    is_visible_direction(&point, height, forest, PointDirection::Left)
+        || is_visible_direction(&point, height, forest, PointDirection::Right)
+        || is_visible_direction(&point, height, forest, PointDirection::Down)
+        || is_visible_direction(&point, height, forest, PointDirection::Up)
 }
 
-fn is_visible_left(x: usize, y: usize, forest: &Vec<Vec<usize>>) -> bool {
-    let mut current = x;
-    let mut visible = true;
-    let height = forest.get(y).expect("valid y").get(x).expect("valid x");
-
-    while current > 0 {
-        current -= 1;
-        let other = forest
-            .get(y)
+fn is_visible_direction(
+    point: &BoundedPoint,
+    height: &usize,
+    forest: &Vec<Vec<usize>>,
+    direction: PointDirection,
+) -> bool {
+    point.into_iter_direction(direction).all(|new_point| {
+        forest
+            .get(new_point.y)
             .expect("valid y")
-            .get(current)
-            .expect("valid x");
-        if other >= height {
-            visible = false;
-            break;
-        }
-    }
-
-    visible
-}
-
-fn is_visible_right(x: usize, y: usize, forest: &Vec<Vec<usize>>) -> bool {
-    let mut current = x;
-    let mut visible = true;
-    let height = forest.get(y).expect("valid y").get(x).expect("valid x");
-
-    while current < forest.get(0).expect("At least 1 row").len() - 1 {
-        current += 1;
-        let other = forest
-            .get(y)
-            .expect("valid y")
-            .get(current)
-            .expect("valid x");
-        if other >= height {
-            visible = false;
-            break;
-        }
-    }
-
-    visible
-}
-
-fn is_visible_up(x: usize, y: usize, forest: &Vec<Vec<usize>>) -> bool {
-    let mut current = y;
-    let mut visible = true;
-    let height = forest.get(y).expect("valid y").get(x).expect("valid x");
-
-    while current > 0 {
-        current -= 1;
-        let other = forest
-            .get(current)
-            .expect("valid y")
-            .get(x)
-            .expect("valid x");
-        if other >= height {
-            visible = false;
-            break;
-        }
-    }
-
-    visible
-}
-
-fn is_visible_down(x: usize, y: usize, forest: &Vec<Vec<usize>>) -> bool {
-    let mut current = y;
-    let mut visible = true;
-    let height = forest.get(y).expect("valid y").get(x).expect("valid x");
-
-    while current < forest.len() - 1 {
-        current += 1;
-        let other = forest
-            .get(current)
-            .expect("valid y")
-            .get(x)
-            .expect("valid x");
-        if other >= height {
-            visible = false;
-            break;
-        }
-    }
-
-    visible
+            .get(new_point.x)
+            .expect("valid x")
+            < height
+    })
 }
