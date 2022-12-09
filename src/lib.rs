@@ -18,6 +18,7 @@ use std::{
     fmt::{self, Display},
     fs::File,
     io::Read,
+    ops::Sub,
     path::PathBuf,
 };
 
@@ -402,4 +403,15 @@ pub fn chunk_blank_lines() -> impl Parser<char, Vec<Vec<char>>, Error = Simple<c
             first_chunks.push(last_chunk);
             first_chunks
         })
+}
+
+pub fn absolute_difference<T>(x: T, y: T) -> T
+where
+    T: Sub<Output = T> + PartialOrd,
+{
+    if x > y {
+        x - y
+    } else {
+        y - x
+    }
 }

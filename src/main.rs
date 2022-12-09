@@ -1,4 +1,5 @@
 #![feature(once_cell)]
+#![feature(iter_array_chunks)]
 
 use adventofcode2022::{Command, CommandResult};
 use anyhow::Result;
@@ -16,6 +17,7 @@ mod day05;
 mod day06;
 mod day07;
 mod day08;
+mod day09;
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
@@ -29,6 +31,7 @@ fn main() -> Result<()> {
         day06::DAY_06,
         day07::DAY_07,
         day08::DAY_08,
+        day09::DAY_09,
     ]
     .into_iter()
     .map(|command| (command.get_name(), command))
