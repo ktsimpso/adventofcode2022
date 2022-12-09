@@ -1,6 +1,5 @@
 use adventofcode2022::{
-    absolute_difference, parse_between_blank_lines, parse_isize, parse_lines, parse_usize,
-    single_arg, Command, ParseError, Problem,
+    absolute_difference, parse_isize, parse_lines, single_arg, Command, ParseError, Problem,
 };
 use anyhow::Result;
 use chumsky::{
@@ -14,25 +13,25 @@ use std::{cell::LazyCell, collections::BTreeSet};
 type ParseOutput = Vec<Direction>;
 
 pub const DAY_09: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
-    //let number = single_arg("number", 'n', "The number of elves to sum")
-    //    .value_parser(clap::value_parser!(usize));
+    let length = single_arg("length", 'l', "The length of the rope")
+        .value_parser(clap::value_parser!(usize));
     let problem = Problem::new(
         "day09",
         "Moves a rope along a path then outputs the number of unqiue positions for the rope's tail.",
         "Path to the input file. Each line should contain a direction for the rope to travel followed by a distance for the rope to travel.",
-        vec![],
+        vec![length],
         parse_arguments,
         parse_file,
         run,
     )
-    .with_part1(CommandLineArguments {}, "Uses a rope of length 2.");
-    //.with_part2(CommandLineArguments {}, "part 2 help");
+    .with_part1(CommandLineArguments { length: 2 }, "Uses a rope of length 2.")
+    .with_part2(CommandLineArguments { length: 10 }, "Uses a rope of lenght 10.");
     Box::new(problem)
 });
 
 #[derive(Debug, Clone)]
 pub struct CommandLineArguments {
-    //n: usize,
+    length: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -45,7 +44,7 @@ pub enum Direction {
 
 fn parse_arguments(args: &ArgMatches) -> CommandLineArguments {
     CommandLineArguments {
-        //n: *args.get_one::<usize>("number").expect("Valid arguments"),
+        length: *args.get_one::<usize>("length").expect("Valid arguments"),
     }
 }
 
@@ -74,33 +73,39 @@ fn parse_direction() -> impl Parser<char, Direction, Error = Simple<char>> {
 
 fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
     let mut movements = BTreeSet::new();
-    let mut current_h = (0, 0);
-    let mut current_t = (0, 0);
+    let mut chain = vec![(0isize, 0isize); arguments.length];
 
-    movements.insert(current_t.clone());
+    chain.last().map(|last| movements.insert(last.clone()));
+    let len = chain.len();
 
     for step in input.into_iter() {
-        match step {
-            Direction::Up(up) => current_h.1 += up,
-            Direction::Right(right) => current_h.0 += right,
-            Direction::Down(down) => current_h.1 -= down,
-            Direction::Left(left) => current_h.0 -= left,
-        }
-        while absolute_difference(current_t.0, current_h.0) > 1
-            || absolute_difference(current_t.1, current_h.1) > 1
-        {
-            if current_t.0 < current_h.0 {
-                current_t = (current_t.0 + 1, current_t.1);
-            } else if current_t.0 > current_h.0 {
-                current_t = (current_t.0 - 1, current_t.1);
+        let (count, mut movement): (isize, Box<dyn FnMut(&mut (isize, isize))>) = match step {
+            Direction::Up(up) => (up, Box::new(|h: &mut (isize, isize)| h.1 += 1)),
+            Direction::Right(right) => (right, Box::new(|h: &mut (isize, isize)| h.0 += 1)),
+            Direction::Down(down) => (down, Box::new(|h: &mut (isize, isize)| h.1 -= 1)),
+            Direction::Left(left) => (left, Box::new(|h: &mut (isize, isize)| h.0 -= 1)),
+        };
+
+        for _ in 0..count {
+            let head = chain.get_mut(0).expect("first item exists");
+            movement(head);
+
+            for current_tail_index in 1..len {
+                let leader = chain
+                    .get(current_tail_index - 1)
+                    .expect("valid index")
+                    .clone();
+                let mut follower = chain.get_mut(current_tail_index).expect("valid index");
+
+                if absolute_difference(follower.0, leader.0) > 1
+                    || absolute_difference(follower.1, leader.1) > 1
+                {
+                    follower.0 += (leader.0 - follower.0).signum();
+                    follower.1 += (leader.1 - follower.1).signum();
+                }
             }
 
-            if current_t.1 < current_h.1 {
-                current_t = (current_t.0, current_t.1 + 1);
-            } else if current_t.1 > current_h.1 {
-                current_t = (current_t.0, current_t.1 - 1);
-            };
-            movements.insert(current_t.clone());
+            chain.last().map(|last| movements.insert(last.clone()));
         }
     }
 

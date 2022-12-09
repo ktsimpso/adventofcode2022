@@ -1,5 +1,4 @@
 #![feature(once_cell)]
-#![feature(iter_array_chunks)]
 
 use adventofcode2022::{Command, CommandResult};
 use anyhow::Result;
