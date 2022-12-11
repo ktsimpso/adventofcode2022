@@ -366,22 +366,19 @@ pub fn parse_chunks<T>(
     chunker: impl Parser<char, Vec<Vec<char>>, Error = Simple<char>>,
     chunk_parser: impl Parser<char, T, Error = Simple<char>>,
 ) -> impl Parser<char, Vec<T>, Error = Simple<char>> {
-    let terminated_chunk_parser = chunk_parser.then_ignore(end());
     chunker.try_map(move |chunks, span| {
         chunks
             .clone()
             .into_iter()
             .map(|chunk| {
-                terminated_chunk_parser
-                    .parse(chunk.clone())
-                    .map_err(|errors| {
-                        let input = chunk.into_iter().collect::<String>();
-                        let message = errors
-                            .into_iter()
-                            .map(|error| format_parse_error(&input, &error))
-                            .join("\n");
-                        Simple::custom(span.clone(), message)
-                    })
+                chunk_parser.parse(chunk.clone()).map_err(|errors| {
+                    let input = chunk.into_iter().collect::<String>();
+                    let message = errors
+                        .into_iter()
+                        .map(|error| format_parse_error(&input, &error))
+                        .join("\n");
+                    Simple::custom(span.clone(), message)
+                })
             })
             .collect::<Result<Vec<T>, _>>()
     })
