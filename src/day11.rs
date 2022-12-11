@@ -1,41 +1,59 @@
 use adventofcode2022::{
-    parse_between_blank_lines, parse_lines, parse_usize, single_arg, Command, ParseError, Problem,
+    flag_arg, parse_between_blank_lines, parse_usize, single_arg, Command, ParseError, Problem,
 };
 use anyhow::Result;
 use chumsky::{
     prelude::Simple,
-    primitive::todo,
     primitive::{end, just},
     text, Parser,
 };
 use clap::ArgMatches;
-use std::{cell::LazyCell, collections::HashMap};
+use std::cell::LazyCell;
 
 type ParseOutput = Vec<Monkey>;
 
 pub const DAY_11: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
-    //let number = single_arg("number", 'n', "The number of elves to sum")
-    //    .value_parser(clap::value_parser!(usize));
+    let rounds = single_arg(
+        "rounds",
+        'r',
+        "The number of rounds to run monkey business.",
+    )
+    .value_parser(clap::value_parser!(usize));
+    let constant_reduction = single_arg(
+        "constant",
+        'c',
+        "The constant number to reduce the worry level by.",
+    )
+    .value_parser(clap::value_parser!(usize));
+    let auto_reduction =
+        flag_arg("auto", 'a', "Automatically reduces the worry level.").conflicts_with("constant");
     let problem = Problem::new(
         "day11",
-        "Determins the product of the two most active monkey's throwing.",
+        "Determins the product of the two most active monkey's throwing. Worry levels may decrease either automatically or via a constant.",
         "Path to the input file. Monkey information seperated by a blank line",
-        vec![],
+        vec![rounds, constant_reduction, auto_reduction],
         parse_arguments,
         parse_file,
         run,
     )
     .with_part1(
-        CommandLineArguments {},
-        "Does 20 iterations of monkey business.",
-    );
-    //.with_part2(CommandLineArguments { }, "part 2 help");
+        CommandLineArguments { worry_level_reducation_strategy: WorryLevelReductionStrategy::Constant(3), rounds: 20 },
+        "Does 20 iterations of monkey business with a constant reduction of 3.",
+    )
+    .with_part2(CommandLineArguments { worry_level_reducation_strategy: WorryLevelReductionStrategy::Auto, rounds: 10_000 }, "Does 10000 iterations of Monkey Business with automatic reduction.");
     Box::new(problem)
 });
 
 #[derive(Debug, Clone)]
 pub struct CommandLineArguments {
-    //n: usize,
+    worry_level_reducation_strategy: WorryLevelReductionStrategy,
+    rounds: usize,
+}
+
+#[derive(Debug, Clone)]
+pub enum WorryLevelReductionStrategy {
+    Constant(usize),
+    Auto,
 }
 
 #[derive(Debug)]
@@ -62,8 +80,21 @@ pub enum Operand {
 }
 
 fn parse_arguments(args: &ArgMatches) -> CommandLineArguments {
+    let constant_reduction = args
+        .get_one::<usize>("constant")
+        .map(|constant| WorryLevelReductionStrategy::Constant(*constant));
+    let auto_reduction = args.get_one::<bool>("auto").and_then(|value| match value {
+        true => Some(WorryLevelReductionStrategy::Auto),
+        false => None,
+    });
+    let reduction_strategy = match (constant_reduction, auto_reduction) {
+        (Some(constant), None) => constant,
+        (None, Some(auto)) => auto,
+        _ => unreachable!(),
+    };
     CommandLineArguments {
-        //n: *args.get_one::<usize>("number").expect("Valid arguments"),
+        worry_level_reducation_strategy: reduction_strategy,
+        rounds: *args.get_one::<usize>("rounds").expect("Valid arguments"),
     }
 }
 
@@ -129,7 +160,8 @@ fn parse_test() -> impl Parser<char, (usize, usize, usize), Error = Simple<char>
 }
 
 fn run(mut input: ParseOutput, arguments: CommandLineArguments) -> usize {
-    for _ in 0..20 {
+    let safe_mod: usize = input.iter().map(|monkey| monkey.test_div).product();
+    for _ in 0..arguments.rounds {
         for index in 0..input.len() {
             let monkey = input.get_mut(index).expect("Valid index");
             monkey.inspect_count += monkey.items.len();
@@ -143,12 +175,17 @@ fn run(mut input: ParseOutput, arguments: CommandLineArguments) -> usize {
                         (Operation::Add, Operand::Old) => item + item,
                         (Operation::Multiply, Operand::Value(value)) => item * value,
                         (Operation::Multiply, Operand::Old) => item * item,
-                    } / 3;
+                    };
 
-                    if worry_level % &monkey.test_div == 0 {
-                        (worry_level, monkey.test_true)
+                    let reduced_worry_level = match arguments.worry_level_reducation_strategy {
+                        WorryLevelReductionStrategy::Constant(value) => worry_level / value,
+                        WorryLevelReductionStrategy::Auto => worry_level % safe_mod,
+                    };
+
+                    if reduced_worry_level % &monkey.test_div == 0 {
+                        (reduced_worry_level, monkey.test_true)
                     } else {
-                        (worry_level, monkey.test_false)
+                        (reduced_worry_level, monkey.test_false)
                     }
                 })
                 .collect::<Vec<_>>();
