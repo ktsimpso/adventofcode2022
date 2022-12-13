@@ -1,5 +1,5 @@
 use adventofcode2022::{
-    parse_between_blank_lines, parse_lines, parse_usize, single_arg, Command, ParseError, Problem,
+    parse_between_blank_lines, parse_usize, single_arg, Command, ParseError, Problem,
 };
 use anyhow::Result;
 use chumsky::{
@@ -8,36 +8,45 @@ use chumsky::{
     recursive::recursive,
     text, Parser,
 };
-use clap::ArgMatches;
+use clap::{ArgMatches, ValueEnum};
 use std::{cell::LazyCell, iter::once};
 
 type ParseOutput = Vec<(Signal, Signal)>;
 
 pub const DAY_13: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
-    //let number = single_arg("number", 'n', "The number of elves to sum")
-    //    .value_parser(clap::value_parser!(usize));
+    let ordering = single_arg("ordering", 'o', "The ordering strategy to use.")
+        .value_parser(clap::value_parser!(PacketOrder));
     let problem = Problem::new(
         "day13",
         "Determines order properties of packets",
         "Path to the input file. Groups of two packets, one packet on each line. Each group is seperated by a newline.",
-        vec![],
+        vec![ordering],
         parse_arguments,
         parse_file,
         run,
     )
-    .with_part1(CommandLineArguments {}, "Finds the 1 based index of the packets who's pair are in order and sums them.");
-    //.with_part2(CommandLineArguments { }, "part 2 help");
+    .with_part1(CommandLineArguments { ordering: PacketOrder::Local }, "Finds the 1 based index of the packets who's pair are in order and sums them.")
+    .with_part2(CommandLineArguments { ordering: PacketOrder::Global }, "Orders all packets and returns the product of the 1 based indexes fro the divider packets.");
     Box::new(problem)
 });
 
+#[derive(Debug, Clone, ValueEnum)]
+pub enum PacketOrder {
+    Local,
+    Global,
+}
+
 #[derive(Debug, Clone)]
 pub struct CommandLineArguments {
-    //n: usize,
+    ordering: PacketOrder,
 }
 
 fn parse_arguments(args: &ArgMatches) -> CommandLineArguments {
     CommandLineArguments {
-        //n: *args.get_one::<usize>("number").expect("Valid arguments"),
+        ordering: args
+            .get_one::<PacketOrder>("ordering")
+            .expect("Valid arguments")
+            .clone(),
     }
 }
 
@@ -45,6 +54,24 @@ fn parse_arguments(args: &ArgMatches) -> CommandLineArguments {
 pub enum Signal {
     Literal(usize),
     List(Vec<Signal>),
+}
+
+impl PartialOrd for Signal {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        compare_signals(self, other).map(|result| {
+            if result {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            }
+        })
+    }
+}
+
+impl Ord for Signal {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Equal)
+    }
 }
 
 fn parse_file(file: String) -> Result<ParseOutput> {
@@ -75,12 +102,32 @@ fn parse_signal() -> impl Parser<char, Signal, Error = Simple<char>> {
 }
 
 fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
-    input
-        .into_iter()
-        .enumerate()
-        .filter(|(_, (left, right))| compare_signals(left, right).unwrap_or(false))
-        .map(|(index, _)| index + 1)
-        .sum()
+    match arguments.ordering {
+        PacketOrder::Local => input
+            .into_iter()
+            .enumerate()
+            .filter(|(_, (left, right))| compare_signals(left, right).unwrap_or(false))
+            .map(|(index, _)| index + 1)
+            .sum(),
+        PacketOrder::Global => {
+            let divider1 = Signal::List(vec![Signal::List(vec![Signal::Literal(2)])]);
+            let divider2 = Signal::List(vec![Signal::List(vec![Signal::Literal(6)])]);
+            let mut flat_signals = input
+                .into_iter()
+                .flat_map(|signals| once(signals.0).chain(once(signals.1)))
+                .chain(once(divider1.clone()))
+                .chain(once(divider2.clone()))
+                .collect::<Vec<_>>();
+            flat_signals.sort();
+
+            flat_signals
+                .into_iter()
+                .enumerate()
+                .filter(|(_, signal)| signal == &divider1 || signal == &divider2)
+                .map(|(index, _)| index + 1)
+                .product()
+        }
+    }
 }
 
 fn compare_signals(left: &Signal, right: &Signal) -> Option<bool> {
