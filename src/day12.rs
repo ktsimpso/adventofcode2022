@@ -1,7 +1,4 @@
-use adventofcode2022::{
-    parse_between_blank_lines, parse_lines, parse_usize, single_arg, BoundedPoint, Command,
-    ParseError, PointDirection, Problem,
-};
+use adventofcode2022::{flag_arg, parse_lines, BoundedPoint, Command, ParseError, Problem};
 use anyhow::Result;
 use chumsky::{
     prelude::Simple,
@@ -16,27 +13,35 @@ use std::{
 
 type ParseOutput = Vec<Vec<MountainTile>>;
 
-pub const DAY_12: LazyCell<Box<dyn Command>> =
-    LazyCell::new(|| {
-        //let number = single_arg("number", 'n', "The number of elves to sum")
-        //    .value_parser(clap::value_parser!(usize));
-        let problem = Problem::new(
+pub const DAY_12: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
+    let expand = flag_arg(
+        "expand",
+        'e',
+        "Expands the possible start positions to include 'a'",
+    );
+    let problem = Problem::new(
         "day12",
         "Finds the shortest path to the end goal on the mountain.",
         "Path to the input file. File should consist of all lower case letters and one S and E.",
-        vec![],
+        vec![expand],
         parse_arguments,
         parse_file,
         run,
     )
-    .with_part1(CommandLineArguments {}, "Finds the shortest path between S and E.");
-        //.with_part2(CommandLineArguments { }, "part 2 help");
-        Box::new(problem)
-    });
+    .with_part1(
+        CommandLineArguments { expand: false },
+        "Finds the shortest path between S and E.",
+    )
+    .with_part2(
+        CommandLineArguments { expand: true },
+        "Finds the shortest path between any S, or 'a' to E.",
+    );
+    Box::new(problem)
+});
 
 #[derive(Debug, Clone)]
 pub struct CommandLineArguments {
-    //n: usize,
+    expand: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -58,7 +63,7 @@ impl MountainTile {
 
 fn parse_arguments(args: &ArgMatches) -> CommandLineArguments {
     CommandLineArguments {
-        //n: *args.get_one::<usize>("number").expect("Valid arguments"),
+        expand: *args.get_one::<bool>("expand").expect("Valid arguments"),
     }
 }
 
@@ -107,6 +112,7 @@ fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
         .enumerate()
         .filter(|(_, node)| match node.value {
             MountainTile::Start => true,
+            MountainTile::Base(_) => arguments.expand && node.value.get_value() == 0,
             _ => false,
         })
         .map(|(index, _)| index)
