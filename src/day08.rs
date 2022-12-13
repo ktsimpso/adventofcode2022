@@ -1,4 +1,7 @@
-use adventofcode2022::{parse_lines, parse_usize, single_arg, Command, ParseError, Problem};
+use adventofcode2022::{
+    parse_lines, parse_usize, single_arg, BoundedPoint, Command, ParseError, PointDirection,
+    Problem,
+};
 use anyhow::Result;
 use chumsky::{prelude::Simple, primitive::end, primitive::one_of, Parser};
 use clap::{ArgMatches, ValueEnum};
@@ -64,98 +67,6 @@ fn parser() -> impl Parser<char, ParseOutput, Error = Simple<char>> {
             .at_least(1),
     )
     .then_ignore(end())
-}
-
-#[derive(Debug, Clone, Copy)]
-struct BoundedPoint {
-    x: usize,
-    y: usize,
-    max_x: usize,
-    max_y: usize,
-}
-
-impl BoundedPoint {
-    fn into_iter_direction(self, point_direction: PointDirection) -> BoundedPointIntoIterator {
-        BoundedPointIntoIterator {
-            point: self,
-            direction: point_direction,
-        }
-    }
-
-    fn get_adjacent(self, point_direction: &PointDirection) -> Option<BoundedPoint> {
-        match point_direction {
-            PointDirection::Up => {
-                if self.y > 0 {
-                    Some(BoundedPoint {
-                        x: self.x,
-                        y: self.y - 1,
-                        max_x: self.max_x,
-                        max_y: self.max_y,
-                    })
-                } else {
-                    None
-                }
-            }
-            PointDirection::Down => {
-                if self.y < self.max_y {
-                    Some(BoundedPoint {
-                        x: self.x,
-                        y: self.y + 1,
-                        max_x: self.max_x,
-                        max_y: self.max_y,
-                    })
-                } else {
-                    None
-                }
-            }
-            PointDirection::Left => {
-                if self.x > 0 {
-                    Some(BoundedPoint {
-                        x: self.x - 1,
-                        y: self.y,
-                        max_x: self.max_x,
-                        max_y: self.max_y,
-                    })
-                } else {
-                    None
-                }
-            }
-            PointDirection::Right => {
-                if self.x < self.max_x {
-                    Some(BoundedPoint {
-                        x: self.x + 1,
-                        y: self.y,
-                        max_x: self.max_x,
-                        max_y: self.max_y,
-                    })
-                } else {
-                    None
-                }
-            }
-        }
-    }
-}
-
-enum PointDirection {
-    Up,
-    Down,
-    Left,
-    Right,
-}
-
-struct BoundedPointIntoIterator {
-    point: BoundedPoint,
-    direction: PointDirection,
-}
-
-impl Iterator for BoundedPointIntoIterator {
-    type Item = BoundedPoint;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let result = self.point.get_adjacent(&self.direction);
-        result.iter().for_each(|point| self.point = *point);
-        result
-    }
 }
 
 fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {

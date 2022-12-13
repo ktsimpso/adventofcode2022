@@ -1,5 +1,8 @@
 #![feature(once_cell)]
 
+mod two_d_vec;
+pub use two_d_vec::{BoundedPoint, PointDirection};
+
 use anyhow::Result;
 use ariadne::{Color, Fmt, Label, Report, ReportKind, Source};
 use chumsky::{
