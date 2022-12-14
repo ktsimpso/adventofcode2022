@@ -10,7 +10,7 @@ use itertools::Itertools;
 use std::{
     cell::LazyCell,
     cmp::{max, min},
-    collections::BTreeSet,
+    collections::{BTreeSet, VecDeque},
 };
 
 type ParseOutput = Vec<Vec<Line>>;
@@ -97,11 +97,15 @@ impl Line {
         max(self.start.x, self.end.x)
     }
 
-    fn contains_point(&self, point: &Point) -> bool {
-        (self.get_min_x() <= point.x && point.x <= self.get_max_x() && self.get_max_y() == point.y)
-            || (self.get_min_y() <= point.y
-                && point.y <= self.get_max_y()
-                && self.get_max_x() == point.x)
+    fn to_points(self) -> BTreeSet<Point> {
+        (self.get_min_x()..=self.get_max_x())
+            .into_iter()
+            .flat_map(|x| {
+                (self.get_min_y()..=self.get_max_y())
+                    .into_iter()
+                    .map(move |y| Point { x, y })
+            })
+            .collect()
     }
 }
 
@@ -158,49 +162,37 @@ fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
     }
 
     let mut count = 0usize;
-    let mut sand_points: BTreeSet<Point> = BTreeSet::new();
+    let mut occupied_points: BTreeSet<Point> = lines.into_iter().map(|line| line.to_points()).fold(
+        BTreeSet::new(),
+        |mut acc, mut value| {
+            acc.append(&mut value);
+            acc
+        },
+    );
     let origin = Point { x: 500, y: 0 };
+    let mut path = VecDeque::from([origin.clone()]);
+    let valid_directions = vec![Direction::Down, Direction::DownLeft, Direction::DownRight];
 
-    loop {
-        let mut current_point = origin.clone();
-
-        loop {
-            if current_point.y > max_y {
-                break;
-            }
-
-            let next_point =
-                is_valid_next_tile(&current_point, &Direction::Down, &lines, &sand_points)
-                    .or_else(|| {
-                        is_valid_next_tile(
-                            &current_point,
-                            &Direction::DownLeft,
-                            &lines,
-                            &sand_points,
-                        )
-                    })
-                    .or_else(|| {
-                        is_valid_next_tile(
-                            &current_point,
-                            &Direction::DownRight,
-                            &lines,
-                            &sand_points,
-                        )
-                    });
+    while let Some(mut current_point) = path.pop_back() {
+        while current_point.y <= max_y {
+            let next_point = valid_directions.iter().find_map(|direction| {
+                is_valid_next_tile(&current_point, direction, &occupied_points)
+            });
 
             match next_point {
                 Some(point) => {
+                    path.push_back(current_point);
                     current_point = point;
                 }
                 None => {
-                    sand_points.insert(current_point.clone());
+                    occupied_points.insert(current_point.clone());
                     count += 1;
                     break;
                 }
             }
         }
 
-        if current_point.y > max_y || current_point == origin {
+        if current_point.y > max_y {
             break;
         }
     }
@@ -210,14 +202,11 @@ fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
 fn is_valid_next_tile(
     point: &Point,
     direction: &Direction,
-    lines: &Vec<Line>,
     sand_points: &BTreeSet<Point>,
 ) -> Option<Point> {
     let next_point = point.get_adjacent_point(direction);
 
-    if sand_points.contains(&next_point)
-        || lines.iter().any(|line| line.contains_point(&next_point))
-    {
+    if sand_points.contains(&next_point) {
         None
     } else {
         Some(next_point)
