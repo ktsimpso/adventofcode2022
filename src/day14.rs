@@ -10,7 +10,7 @@ use itertools::Itertools;
 use std::{
     cell::LazyCell,
     cmp::{max, min},
-    collections::{BTreeSet, VecDeque},
+    collections::{HashSet, VecDeque},
 };
 
 type ParseOutput = Vec<Vec<Line>>;
@@ -42,7 +42,7 @@ fn parse_arguments(args: &ArgMatches) -> CommandLineArguments {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct Point {
     x: usize,
     y: usize,
@@ -97,7 +97,7 @@ impl Line {
         max(self.start.x, self.end.x)
     }
 
-    fn to_points(self) -> BTreeSet<Point> {
+    fn to_points(self) -> HashSet<Point> {
         (self.get_min_x()..=self.get_max_x())
             .into_iter()
             .flat_map(|x| {
@@ -150,25 +150,28 @@ fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
     let mut max_y = lines.iter().map(|line| line.get_max_y()).max().unwrap_or(0);
 
     if arguments.bottom {
-        let max_x = lines.iter().map(|line| line.get_max_x()).max().unwrap_or(0);
         max_y += 2;
         lines.push(Line {
-            start: Point { x: 0, y: max_y },
+            start: Point {
+                x: 500 - max_y,
+                y: max_y,
+            },
             end: Point {
-                x: max_x + max_y,
+                x: 500 + max_y,
                 y: max_y,
             },
         });
     }
 
     let mut count = 0usize;
-    let mut occupied_points: BTreeSet<Point> = lines.into_iter().map(|line| line.to_points()).fold(
-        BTreeSet::new(),
-        |mut acc, mut value| {
-            acc.append(&mut value);
-            acc
-        },
-    );
+    let mut occupied_points: HashSet<Point> =
+        lines
+            .into_iter()
+            .map(|line| line.to_points())
+            .fold(HashSet::new(), |mut acc, value| {
+                acc.extend(value.into_iter());
+                acc
+            });
     let origin = Point { x: 500, y: 0 };
     let mut path = VecDeque::from([origin.clone()]);
     let valid_directions = vec![Direction::Down, Direction::DownLeft, Direction::DownRight];
@@ -202,7 +205,7 @@ fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
 fn is_valid_next_tile(
     point: &Point,
     direction: &Direction,
-    sand_points: &BTreeSet<Point>,
+    sand_points: &HashSet<Point>,
 ) -> Option<Point> {
     let next_point = point.get_adjacent_point(direction);
 
