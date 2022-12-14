@@ -1,6 +1,4 @@
-use adventofcode2022::{
-    parse_between_blank_lines, parse_lines, parse_usize, single_arg, Command, ParseError, Problem,
-};
+use adventofcode2022::{flag_arg, parse_lines, parse_usize, Command, ParseError, Problem};
 use anyhow::Result;
 use chumsky::{
     prelude::Simple,
@@ -18,30 +16,29 @@ use std::{
 type ParseOutput = Vec<Vec<Line>>;
 
 pub const DAY_14: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
-    //let number = single_arg("number", 'n', "The number of elves to sum")
-    //    .value_parser(clap::value_parser!(usize));
+    let bottom = flag_arg("bottom", 'b', "There is a bottom in the cave");
     let problem = Problem::new(
         "day14",
         "Find when sand reaches steady state.",
         "Path to the input file. Each line is a rock vien in the cave. Rock veins are continuous horizontal and vertical lines.",
-        vec![],
+        vec![bottom],
         parse_arguments,
         parse_file,
         run,
     )
-    .with_part1(CommandLineArguments {}, "Finds how much sand needs to fall before it falls into the abyss.");
-    //.with_part2(CommandLineArguments { }, "part 2 help");
+    .with_part1(CommandLineArguments { bottom: false }, "Finds how much sand needs to fall before it falls into the abyss.")
+    .with_part2(CommandLineArguments { bottom: true }, "Finds how much sand needs to fall before no more can fit");
     Box::new(problem)
 });
 
 #[derive(Debug, Clone)]
 pub struct CommandLineArguments {
-    //n: usize,
+    bottom: bool,
 }
 
 fn parse_arguments(args: &ArgMatches) -> CommandLineArguments {
     CommandLineArguments {
-        //n: *args.get_one::<usize>("number").expect("Valid arguments"),
+        bottom: *args.get_one::<bool>("bottom").expect("Valid arguments"),
     }
 }
 
@@ -142,11 +139,23 @@ fn parse_point() -> impl Parser<char, Point, Error = Simple<char>> {
 }
 
 fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
-    let lines = input
+    let mut lines = input
         .into_iter()
         .flat_map(|lines| lines.into_iter())
         .collect::<Vec<Line>>();
-    let max_y = lines.iter().map(|line| line.get_max_y()).max().unwrap_or(0);
+    let mut max_y = lines.iter().map(|line| line.get_max_y()).max().unwrap_or(0);
+
+    if arguments.bottom {
+        let max_x = lines.iter().map(|line| line.get_max_x()).max().unwrap_or(0);
+        max_y += 2;
+        lines.push(Line {
+            start: Point { x: 0, y: max_y },
+            end: Point {
+                x: max_x + max_y,
+                y: max_y,
+            },
+        });
+    }
 
     let mut count = 0usize;
     let mut sand_points: BTreeSet<Point> = BTreeSet::new();
