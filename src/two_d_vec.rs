@@ -82,6 +82,7 @@ impl BoundedPoint {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PointDirection {
     Up,
     Down,
