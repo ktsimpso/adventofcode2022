@@ -80,6 +80,79 @@ impl BoundedPoint {
             }
         }
     }
+
+    pub fn get_adjacent_wrapping(self, point_direction: &PointDirection) -> BoundedPoint {
+        match point_direction {
+            PointDirection::Up => {
+                if self.y > 0 {
+                    BoundedPoint {
+                        x: self.x,
+                        y: self.y - 1,
+                        max_x: self.max_x,
+                        max_y: self.max_y,
+                    }
+                } else {
+                    BoundedPoint {
+                        x: self.x,
+                        y: self.max_y,
+                        max_x: self.max_x,
+                        max_y: self.max_y,
+                    }
+                }
+            }
+            PointDirection::Down => {
+                if self.y < self.max_y {
+                    BoundedPoint {
+                        x: self.x,
+                        y: self.y + 1,
+                        max_x: self.max_x,
+                        max_y: self.max_y,
+                    }
+                } else {
+                    BoundedPoint {
+                        x: self.x,
+                        y: 0,
+                        max_x: self.max_x,
+                        max_y: self.max_y,
+                    }
+                }
+            }
+            PointDirection::Left => {
+                if self.x > 0 {
+                    BoundedPoint {
+                        x: self.x - 1,
+                        y: self.y,
+                        max_x: self.max_x,
+                        max_y: self.max_y,
+                    }
+                } else {
+                    BoundedPoint {
+                        x: self.max_x,
+                        y: self.y,
+                        max_x: self.max_x,
+                        max_y: self.max_y,
+                    }
+                }
+            }
+            PointDirection::Right => {
+                if self.x < self.max_x {
+                    BoundedPoint {
+                        x: self.x + 1,
+                        y: self.y,
+                        max_x: self.max_x,
+                        max_y: self.max_y,
+                    }
+                } else {
+                    BoundedPoint {
+                        x: 0,
+                        y: self.y,
+                        max_x: self.max_x,
+                        max_y: self.max_y,
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
