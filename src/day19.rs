@@ -1,21 +1,16 @@
-use adventofcode2022::{
-    parse_between_blank_lines, parse_lines, parse_usize, single_arg, Command, ParseError, Problem,
-};
+use adventofcode2022::{parse_lines, parse_usize, single_arg, Command, ParseError, Problem};
 use anyhow::Result;
 use chumsky::{
     prelude::Simple,
-    primitive::{end, just, Container},
+    primitive::{end, just},
     Parser,
 };
-use clap::ArgMatches;
-use itertools::Itertools;
-use rayon::prelude::{IntoParallelIterator, ParallelBridge, ParallelIterator};
+use clap::{ArgMatches, ValueEnum};
+use rayon::prelude::{ParallelBridge, ParallelIterator};
 use std::{
     cell::LazyCell,
     cmp::{max, min},
-    collections::{HashMap, HashSet},
-    iter::once,
-    time::Instant,
+    collections::HashMap,
 };
 
 type ParseOutput = Vec<Blueprint>;
@@ -23,28 +18,50 @@ type ParseOutput = Vec<Blueprint>;
 pub const DAY_19: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
     let time = single_arg("time", 't', "The time you have to crack geodes")
         .value_parser(clap::value_parser!(u16));
+    let limit = single_arg("limit", 'l', "Limits the number of blueprints to check")
+        .required(false)
+        .value_parser(clap::value_parser!(usize));
+    let stats = single_arg(
+        "stats",
+        's',
+        "What metric shoudl be determined for the blueprints",
+    )
+    .value_parser(clap::value_parser!(BlueprintStats));
     let problem = Problem::new(
         "day19",
         "Finds the maximum amount of geodes you can crack with a given recipe.",
         "Path to the input file. Each line should contain a recpiee for how to constuct robots of all types.",
-        vec![time],
+        vec![time, limit, stats],
         parse_arguments,
         parse_file,
         run,
     )
-    .with_part1(CommandLineArguments { time: 24 }, "Determines the quality level of all blueprints then sums them.");
-    //.with_part2(CommandLineArguments { }, "part 2 help");
+    .with_part1(CommandLineArguments { time: 24, limit: None, blueprint_stats: BlueprintStats::QualityLevelSum }, "Determines the quality level of all blueprints for 24 minutes then sums them.")
+    .with_part2(CommandLineArguments { time: 32, limit: Some(3), blueprint_stats: BlueprintStats::ProductGeodes }, "Takes the first 3 blueprints and multiplioes the number of geodes found in 32 minutes");
     Box::new(problem)
 });
+
+#[derive(Debug, Clone, ValueEnum, PartialEq, Eq)]
+pub enum BlueprintStats {
+    QualityLevelSum,
+    ProductGeodes,
+}
 
 #[derive(Debug, Clone)]
 pub struct CommandLineArguments {
     time: u16,
+    limit: Option<usize>,
+    blueprint_stats: BlueprintStats,
 }
 
 fn parse_arguments(args: &ArgMatches) -> CommandLineArguments {
     CommandLineArguments {
         time: *args.get_one::<u16>("time").expect("Valid arguments"),
+        limit: args.get_one::<usize>("limit").copied(),
+        blueprint_stats: args
+            .get_one::<BlueprintStats>("stats")
+            .expect("Valid arguments")
+            .clone(),
     }
 }
 
@@ -181,14 +198,24 @@ fn parse_material() -> impl Parser<char, Material, Error = Simple<char>> {
 }
 
 fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
-    input
+    let mut count = 0;
+    let result = input
         .into_iter()
+        .take_while(|_| {
+            let result = arguments.limit.map(|limit| count < limit).unwrap_or(true);
+            count += 1;
+            result
+        })
         .par_bridge()
-        .map(|blueprint| score_blueprint(&blueprint, arguments.time))
-        .sum::<u16>() as usize
+        .map(|blueprint| score_blueprint(&blueprint, arguments.time, &arguments.blueprint_stats));
+
+    match arguments.blueprint_stats {
+        BlueprintStats::QualityLevelSum => result.sum::<u16>() as usize,
+        BlueprintStats::ProductGeodes => result.product::<u16>() as usize,
+    }
 }
 
-fn score_blueprint(blueprint: &Blueprint, time: u16) -> u16 {
+fn score_blueprint(blueprint: &Blueprint, time: u16, blueprint_stats: &BlueprintStats) -> u16 {
     let start_resources = Resources {
         ore: 0,
         clay: 0,
@@ -199,16 +226,19 @@ fn score_blueprint(blueprint: &Blueprint, time: u16) -> u16 {
         geode_robots: 0,
     };
 
-    let result = blueprint.id
-        * get_number_of_geodes_cracked(
-            blueprint,
-            time,
-            start_resources,
-            &mut HashMap::new(),
-            &get_max_material(blueprint, &Material::Ore),
-            &get_max_material(blueprint, &Material::Clay),
-            &get_max_material(blueprint, &Material::Obsidian),
-        );
+    let result = if blueprint_stats == &BlueprintStats::QualityLevelSum {
+        blueprint.id
+    } else {
+        1
+    } * get_number_of_geodes_cracked(
+        blueprint,
+        time,
+        start_resources,
+        &mut HashMap::new(),
+        &get_max_material(blueprint, &Material::Ore),
+        &get_max_material(blueprint, &Material::Clay),
+        &get_max_material(blueprint, &Material::Obsidian),
+    );
     result
 }
 
