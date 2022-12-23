@@ -1,6 +1,6 @@
 [package]
 name = "adventofcode2022"
-version = "0.18.2"
+version = "0.19.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -11,3 +11,4 @@ ariadne = "0.1.5"
 chumsky = "0.8.0"
 clap = { version = "4.0.29", features = ["derive", "string"] }
 itertools = "0.10.5"
+rayon = "1.6.1"
