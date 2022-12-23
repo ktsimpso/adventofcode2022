@@ -1,6 +1,5 @@
 use adventofcode2022::{
-    parse_between_blank_lines, parse_lines, parse_usize, single_arg, Command, ParseError,
-    PointDirection, Problem,
+    flag_arg, parse_lines, single_arg, Command, ParseError, PointDirection, Problem,
 };
 use anyhow::Result;
 use chumsky::{
@@ -18,27 +17,48 @@ use std::{
 type ParseOutput = Vec<Vec<Tile>>;
 
 pub const DAY_23: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
+    let rounds = single_arg("rounds", 'r', "The number of rounds to iterate for")
+        .value_parser(clap::value_parser!(usize));
+    let equalibrium = flag_arg(
+        "equalibrium",
+        'e',
+        "Runs rounds until the elves do not move, then returns the number of rounds run",
+    )
+    .conflicts_with("rounds");
     let problem = Problem::new(
         "day23",
-        "Finds the number of empty ground tiles after the elves have spread out for some iterations",
+        "Finds the number of empty ground tiles after the elves have spread out for some iterations or equalibrium",
         "Path to the input file. The initial positions of the elves.",
-        vec![],
+        vec![rounds, equalibrium],
         parse_arguments,
         parse_file,
         run,
     )
-    .with_part1(CommandLineArguments {}, "The number of empty spaces after 10 rounds.");
-    //.with_part2(CommandLineArguments { }, "part 2 help.");
+    .with_part1(CommandLineArguments { iteration_limit: IterationLimit::Rounds(10) }, "The number of empty spaces after 10 rounds.")
+    .with_part2(CommandLineArguments { iteration_limit: IterationLimit::Equalibrium }, "The number of rounds until equalibrium is reached.");
     Box::new(problem)
 });
 
 #[derive(Debug, Clone)]
-pub struct CommandLineArguments {}
+pub enum IterationLimit {
+    Rounds(usize),
+    Equalibrium,
+}
+
+#[derive(Debug, Clone)]
+pub struct CommandLineArguments {
+    iteration_limit: IterationLimit,
+}
 
 fn parse_arguments(args: &ArgMatches) -> CommandLineArguments {
-    CommandLineArguments {
-        //n: *args.get_one::<usize>("number").expect("Valid arguments"),
-    }
+    let rounds = args.get_one::<usize>("rounds");
+    let equalibrium = args.get_one::<bool>("equalibrium");
+    let iteration_limit = match (rounds, equalibrium) {
+        (None, Some(true)) => IterationLimit::Equalibrium,
+        (Some(value), Some(false)) => IterationLimit::Rounds(*value),
+        _ => unreachable!(),
+    };
+    CommandLineArguments { iteration_limit }
 }
 
 #[derive(Debug, Clone)]
@@ -97,24 +117,40 @@ fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
     let mut prev = elf_points.clone();
     let mut count = 0;
 
-    while count < 10 {
-        //print_elves(&elf_points);
-        //println!();
+    loop {
         count += 1;
 
         elf_points = run_iteration(elf_points, &directions);
         let front = directions.pop_front().expect("Direction exists");
         directions.push_back(front);
+
+        match arguments.iteration_limit {
+            IterationLimit::Rounds(limit) => {
+                if count == limit {
+                    break;
+                }
+            }
+            IterationLimit::Equalibrium => {
+                if elf_points == prev {
+                    break;
+                }
+
+                prev = elf_points.clone()
+            }
+        };
     }
 
-    //print_elves(&elf_points);
+    match arguments.iteration_limit {
+        IterationLimit::Rounds(_) => {
+            let max_x = elf_points.iter().map(|point| point.x).max().unwrap_or(0);
+            let min_x = elf_points.iter().map(|point| point.x).min().unwrap_or(0);
+            let max_y = elf_points.iter().map(|point| point.y).max().unwrap_or(0);
+            let min_y = elf_points.iter().map(|point| point.y).min().unwrap_or(0);
 
-    let max_x = elf_points.iter().map(|point| point.x).max().unwrap_or(0);
-    let min_x = elf_points.iter().map(|point| point.x).min().unwrap_or(0);
-    let max_y = elf_points.iter().map(|point| point.y).max().unwrap_or(0);
-    let min_y = elf_points.iter().map(|point| point.y).min().unwrap_or(0);
-
-    (max_x - min_x + 1) as usize * (max_y - min_y + 1) as usize - elf_points.len()
+            (max_x - min_x + 1) as usize * (max_y - min_y + 1) as usize - elf_points.len()
+        }
+        IterationLimit::Equalibrium => count,
+    }
 }
 
 fn run_iteration(
@@ -228,7 +264,7 @@ fn run_iteration(
         .collect()
 }
 
-fn print_elves(elves: &HashSet<Point>) {
+fn _print_elves(elves: &HashSet<Point>) {
     let max_x = elves.iter().map(|point| point.x).max().unwrap_or(0);
     let min_x = elves.iter().map(|point| point.x).min().unwrap_or(0);
     let max_y = elves.iter().map(|point| point.y).max().unwrap_or(0);
