@@ -1,7 +1,4 @@
-use adventofcode2022::{
-    parse_between_blank_lines, parse_isize, parse_lines, parse_usize, single_arg, Command,
-    ParseError, Problem,
-};
+use adventofcode2022::{flag_arg, parse_isize, parse_lines, Command, ParseError, Problem};
 use anyhow::Result;
 use chumsky::{
     prelude::Simple,
@@ -14,33 +11,35 @@ use std::{cell::LazyCell, collections::HashMap};
 type ParseOutput = Vec<Monkey>;
 
 pub const DAY_21: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
-    //let number = single_arg("number", 'n', "The number of elves to sum")
-    //    .value_parser(clap::value_parser!(usize));
+    let equal = flag_arg("equal", 'e', "The number of elves to sum");
     let problem = Problem::new(
         "day21",
         "Evaludates the monkey expression",
         "Path to the input file. Each line has a monkey name, followed by an expression.",
-        vec![],
+        vec![equal],
         parse_arguments,
         parse_file,
         run,
     )
     .with_part1(
-        CommandLineArguments {},
+        CommandLineArguments { equal: false },
         "Finds the value of the expression called by root.",
+    )
+    .with_part2(
+        CommandLineArguments { equal: true },
+        "Finds the value needs to equal what root wants to use.",
     );
-    //.with_part2(CommandLineArguments { }, "part 2 help");
     Box::new(problem)
 });
 
 #[derive(Debug, Clone)]
 pub struct CommandLineArguments {
-    //n: usize,
+    equal: bool,
 }
 
 fn parse_arguments(args: &ArgMatches) -> CommandLineArguments {
     CommandLineArguments {
-        //n: *args.get_one::<usize>("number").expect("Valid arguments"),
+        equal: *args.get_one::<bool>("equal").unwrap_or(&false),
     }
 }
 
@@ -101,12 +100,31 @@ fn parse_operator() -> impl Parser<char, Operator, Error = Simple<char>> {
 }
 
 fn run(input: ParseOutput, arguments: CommandLineArguments) -> isize {
-    let monkeys = input
+    let mut monkeys = input
         .into_iter()
         .map(|monkey| (monkey.name.clone(), monkey))
         .collect::<HashMap<_, _>>();
 
-    evaluate_monkey(&"root".to_string(), &monkeys)
+    if arguments.equal {
+        let _humn = monkeys.remove("humn").expect("human is me");
+        let root = monkeys.remove("root").expect("I am root");
+        match root.operation {
+            Operation::Experssion(left, right, _) => {
+                match (
+                    evaluate_monkey_opt(&left, &monkeys),
+                    evaluate_monkey_opt(&right, &monkeys),
+                ) {
+                    (None, Some(target)) => resolve_to_target(&left, target, &monkeys),
+                    (Some(target), None) => resolve_to_target(&right, target, &monkeys),
+                    (None, None) => 0,
+                    (Some(_), Some(_)) => 0,
+                }
+            }
+            Operation::Value(value) => value,
+        }
+    } else {
+        evaluate_monkey(&"root".to_string(), &monkeys)
+    }
 }
 
 fn evaluate_monkey(name: &String, monkeys: &HashMap<String, Monkey>) -> isize {
@@ -119,6 +137,62 @@ fn evaluate_monkey(name: &String, monkeys: &HashMap<String, Monkey>) -> isize {
             Operator::Sub => evaluate_monkey(&sub1, monkeys) - evaluate_monkey(&sub2, monkeys),
             Operator::Mul => evaluate_monkey(&sub1, monkeys) * evaluate_monkey(&sub2, monkeys),
             Operator::Div => evaluate_monkey(&sub1, monkeys) / evaluate_monkey(&sub2, monkeys),
+        },
+    }
+}
+
+fn evaluate_monkey_opt(name: &String, monkeys: &HashMap<String, Monkey>) -> Option<isize> {
+    monkeys
+        .get(name)
+        .and_then(|current| match &current.operation {
+            Operation::Value(value) => Some(*value),
+            Operation::Experssion(sub1, sub2, operator) => match (
+                evaluate_monkey_opt(&sub1, monkeys),
+                evaluate_monkey_opt(&sub2, monkeys),
+            ) {
+                (Some(left), Some(right)) => Some(match operator {
+                    Operator::Add => left + right,
+                    Operator::Sub => left - right,
+                    Operator::Mul => left * right,
+                    Operator::Div => left / right,
+                }),
+                _ => None,
+            },
+        })
+}
+
+fn resolve_to_target(name: &String, target: isize, monkeys: &HashMap<String, Monkey>) -> isize {
+    if name == "humn" {
+        return target;
+    }
+    let current = monkeys.get(name).expect("Monkey exists");
+
+    match &current.operation {
+        Operation::Value(_) => 0,
+        Operation::Experssion(left, right, operation) => match (
+            evaluate_monkey_opt(&left, monkeys),
+            evaluate_monkey_opt(&right, monkeys),
+        ) {
+            (None, None) => 0,
+            (None, Some(value)) => {
+                let new_target = match operation {
+                    Operator::Add => target - value,
+                    Operator::Sub => target + value,
+                    Operator::Mul => target / value,
+                    Operator::Div => target * value,
+                };
+                resolve_to_target(&left, new_target, monkeys)
+            }
+            (Some(value), None) => {
+                let new_target = match operation {
+                    Operator::Add => target - value,
+                    Operator::Sub => value - target,
+                    Operator::Mul => target / value,
+                    Operator::Div => value / target,
+                };
+                resolve_to_target(&right, new_target, monkeys)
+            }
+            (Some(_), Some(_)) => 0,
         },
     }
 }
