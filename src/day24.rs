@@ -1,6 +1,5 @@
 use adventofcode2022::{
-    parse_between_blank_lines, parse_lines, parse_usize, single_arg, BoundedPoint, Command,
-    ParseError, PointDirection, Problem,
+    parse_lines, single_arg, BoundedPoint, Command, ParseError, PointDirection, Problem,
 };
 use anyhow::Result;
 use chumsky::{
@@ -9,40 +8,45 @@ use chumsky::{
     Parser,
 };
 use clap::ArgMatches;
-use itertools::Itertools;
 use std::{
     cell::LazyCell,
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, HashSet, VecDeque},
     iter::once,
 };
 
 type ParseOutput = Vec<Vec<Tile>>;
 
 pub const DAY_24: LazyCell<Box<dyn Command>> = LazyCell::new(|| {
-    //let number = single_arg("number", 'n', "The number of elves to sum")
-    //    .value_parser(clap::value_parser!(usize));
+    let traversals = single_arg(
+        "traversals",
+        't',
+        "The number of times to traverse the snow storm",
+    )
+    .value_parser(clap::value_parser!(usize));
     let problem = Problem::new(
         "day24",
         "Figures out how long it will take the elves to navigatea snow storm.",
         "Path to the input file. The current status of the field with the direction blizzards are traveling.",
-        vec![],
+        vec![traversals],
         parse_arguments,
         parse_file,
         run,
     )
-    .with_part1(CommandLineArguments {}, "Finds how long it takes to traverse the snow storm");
-    //.with_part2(CommandLineArguments { }, "part 2 help");
+    .with_part1(CommandLineArguments { traversals: 1 }, "Finds how long it takes to traverse the snow storm")
+    .with_part2(CommandLineArguments { traversals: 3 }, "Finds how long it takes to traverse the snow storm 3 times.");
     Box::new(problem)
 });
 
 #[derive(Debug, Clone)]
 pub struct CommandLineArguments {
-    //n: usize,
+    traversals: usize,
 }
 
 fn parse_arguments(args: &ArgMatches) -> CommandLineArguments {
     CommandLineArguments {
-        //n: *args.get_one::<usize>("number").expect("Valid arguments"),
+        traversals: *args
+            .get_one::<usize>("traversals")
+            .expect("Valid arguments"),
     }
 }
 
@@ -86,7 +90,7 @@ fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
     let max_x = input.iter().map(|row| row.len() - 1).max().unwrap_or(0);
     let max_y = input.len() - 1;
 
-    let start_point = input
+    let mut start_point = input
         .iter()
         .enumerate()
         .flat_map(|(y, row)| {
@@ -101,7 +105,7 @@ fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
         .map(|(point, _)| point)
         .expect("At least one blank");
 
-    let target_point = input
+    let mut target_point = input
         .iter()
         .enumerate()
         .last()
@@ -152,7 +156,13 @@ fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
 
     println!("Found {} possible storm patterns", all_maps.len());
 
-    find_path(start_point, target_point, 0, &all_maps) - 1
+    let mut count = 0;
+    for _ in 0..arguments.traversals {
+        count = find_path(start_point, target_point, count, &all_maps);
+        (start_point, target_point) = (target_point, start_point);
+    }
+
+    count - 1
 }
 
 fn find_path(
@@ -165,7 +175,7 @@ fn find_path(
     let mut cache = HashSet::new();
 
     while queue.len() > 0 {
-        let (current_expedition, movement) = queue.pop_front().expect("map exists");
+        let (current_expedition, movement) = queue.pop_front().expect("Queue is not empty");
         if current_expedition == target_point {
             return movement;
         }
@@ -238,7 +248,7 @@ fn run_movements(map: BTreeMap<BoundedPoint, Vec<Tile>>) -> BTreeMap<BoundedPoin
         )
 }
 
-fn print_map(map: &BTreeMap<BoundedPoint, Vec<Tile>>, max_x: usize, max_y: usize) {
+fn _print_map(map: &BTreeMap<BoundedPoint, Vec<Tile>>, max_x: usize, max_y: usize) {
     for y in 0..=max_y {
         for x in 0..=max_x {
             let fallback = vec![Tile::Empty];
