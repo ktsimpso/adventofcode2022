@@ -5,7 +5,7 @@ const CARDINAL_DIRECTIONS: [PointDirection; 4] = [
     PointDirection::Up,
 ];
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct BoundedPoint {
     pub x: usize,
     pub y: usize,
@@ -155,7 +155,7 @@ impl BoundedPoint {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PointDirection {
     Up,
     Down,
