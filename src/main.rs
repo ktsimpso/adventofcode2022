@@ -32,6 +32,7 @@ mod day21;
 mod day22;
 mod day23;
 mod day24;
+mod day25;
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
@@ -61,6 +62,7 @@ fn main() -> Result<()> {
         day22::DAY_22,
         day23::DAY_23,
         day24::DAY_24,
+        day25::DAY_25,
     ]
     .into_iter()
     .map(|command| (command.get_name(), command))
