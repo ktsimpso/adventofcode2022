@@ -1,7 +1,7 @@
 #![feature(once_cell)]
 
 mod two_d_vec;
-pub use two_d_vec::{BoundedPoint, PointDirection};
+pub use two_d_vec::{BoundedPoint, PointDirection, RotationDegrees};
 
 use anyhow::Result;
 use ariadne::{Color, Fmt, Label, Report, ReportKind, Source};

@@ -33,10 +33,8 @@ impl BoundedPoint {
             PointDirection::Up => {
                 if self.y > 0 {
                     Some(BoundedPoint {
-                        x: self.x,
                         y: self.y - 1,
-                        max_x: self.max_x,
-                        max_y: self.max_y,
+                        ..self
                     })
                 } else {
                     None
@@ -45,10 +43,8 @@ impl BoundedPoint {
             PointDirection::Down => {
                 if self.y < self.max_y {
                     Some(BoundedPoint {
-                        x: self.x,
                         y: self.y + 1,
-                        max_x: self.max_x,
-                        max_y: self.max_y,
+                        ..self
                     })
                 } else {
                     None
@@ -58,9 +54,7 @@ impl BoundedPoint {
                 if self.x > 0 {
                     Some(BoundedPoint {
                         x: self.x - 1,
-                        y: self.y,
-                        max_x: self.max_x,
-                        max_y: self.max_y,
+                        ..self
                     })
                 } else {
                     None
@@ -70,9 +64,7 @@ impl BoundedPoint {
                 if self.x < self.max_x {
                     Some(BoundedPoint {
                         x: self.x + 1,
-                        y: self.y,
-                        max_x: self.max_x,
-                        max_y: self.max_y,
+                        ..self
                     })
                 } else {
                     None
@@ -86,51 +78,36 @@ impl BoundedPoint {
             PointDirection::Up => {
                 if self.y > 0 {
                     BoundedPoint {
-                        x: self.x,
                         y: self.y - 1,
-                        max_x: self.max_x,
-                        max_y: self.max_y,
+                        ..self
                     }
                 } else {
                     BoundedPoint {
-                        x: self.x,
                         y: self.max_y,
-                        max_x: self.max_x,
-                        max_y: self.max_y,
+                        ..self
                     }
                 }
             }
             PointDirection::Down => {
                 if self.y < self.max_y {
                     BoundedPoint {
-                        x: self.x,
                         y: self.y + 1,
-                        max_x: self.max_x,
-                        max_y: self.max_y,
+                        ..self
                     }
                 } else {
-                    BoundedPoint {
-                        x: self.x,
-                        y: 0,
-                        max_x: self.max_x,
-                        max_y: self.max_y,
-                    }
+                    BoundedPoint { y: 0, ..self }
                 }
             }
             PointDirection::Left => {
                 if self.x > 0 {
                     BoundedPoint {
                         x: self.x - 1,
-                        y: self.y,
-                        max_x: self.max_x,
-                        max_y: self.max_y,
+                        ..self
                     }
                 } else {
                     BoundedPoint {
                         x: self.max_x,
-                        y: self.y,
-                        max_x: self.max_x,
-                        max_y: self.max_y,
+                        ..self
                     }
                 }
             }
@@ -138,29 +115,68 @@ impl BoundedPoint {
                 if self.x < self.max_x {
                     BoundedPoint {
                         x: self.x + 1,
-                        y: self.y,
-                        max_x: self.max_x,
-                        max_y: self.max_y,
+                        ..self
                     }
                 } else {
-                    BoundedPoint {
-                        x: 0,
-                        y: self.y,
-                        max_x: self.max_x,
-                        max_y: self.max_y,
-                    }
+                    BoundedPoint { x: 0, ..self }
                 }
             }
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
+pub enum RotationDegrees {
+    Zero,
+    Ninety,
+    OneHundredEighty,
+    TwoHundredSeventy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum PointDirection {
     Up,
     Down,
     Left,
     Right,
+}
+
+impl PointDirection {
+    pub fn get_rotation(&self, other: &PointDirection) -> RotationDegrees {
+        match (self, other) {
+            (p1, p2) if p1 == p2 => RotationDegrees::Zero,
+            (p1, p2) if &p1.get_opposite() == p2 => RotationDegrees::OneHundredEighty,
+            (p1, p2) if &p1.get_counter_clockwise() == p2 => RotationDegrees::TwoHundredSeventy,
+            _ => RotationDegrees::Ninety,
+        }
+    }
+
+    pub fn get_opposite(&self) -> PointDirection {
+        match self {
+            PointDirection::Up => PointDirection::Down,
+            PointDirection::Down => PointDirection::Up,
+            PointDirection::Left => PointDirection::Right,
+            PointDirection::Right => PointDirection::Left,
+        }
+    }
+
+    pub fn get_clockwise(&self) -> PointDirection {
+        match self {
+            PointDirection::Up => PointDirection::Right,
+            PointDirection::Down => PointDirection::Left,
+            PointDirection::Left => PointDirection::Up,
+            PointDirection::Right => PointDirection::Down,
+        }
+    }
+
+    pub fn get_counter_clockwise(&self) -> PointDirection {
+        match self {
+            PointDirection::Up => PointDirection::Left,
+            PointDirection::Down => PointDirection::Right,
+            PointDirection::Left => PointDirection::Down,
+            PointDirection::Right => PointDirection::Up,
+        }
+    }
 }
 
 pub struct BoundedPointIntoIterator {

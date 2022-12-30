@@ -1,6 +1,6 @@
 use adventofcode2022::{
     parse_lines, parse_usize, single_arg, BoundedPoint, Command, ParseError, PointDirection,
-    Problem,
+    Problem, RotationDegrees,
 };
 use anyhow::Result;
 use chumsky::{
@@ -9,7 +9,10 @@ use chumsky::{
     text, Parser,
 };
 use clap::{value_parser, ArgMatches};
-use std::{cell::LazyCell, collections::HashMap};
+use std::{
+    cell::LazyCell,
+    collections::{BTreeSet, HashMap, HashSet, VecDeque},
+};
 
 type ParseOutput = (Vec<Vec<Tile>>, Vec<Instruction>);
 
@@ -95,14 +98,6 @@ fn parse_tile() -> impl Parser<char, Tile, Error = Simple<char>> {
     nothing.or(space).or(wall)
 }
 
-#[derive(Debug, Clone)]
-enum RotationDegrees {
-    Zero,
-    Ninety,
-    OneHundredEighty,
-    TwoHundredSeventy,
-}
-
 fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
     let max_x = input.0.iter().map(|row| row.len()).max().unwrap_or(0);
     let max_y = input.0.len();
@@ -119,6 +114,8 @@ fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
     let (point, direction) = match arguments.cubed_region_size {
         Some(region_size) => {
             let region_bounds = parse_regions_from_board(&board, region_size);
+            let region_path_graph = build_region_path_graph(&region_bounds, region_size);
+            let region_paths_3d = build_3d_region_paths(&region_path_graph);
             traverse_grid_cube(
                 &board,
                 &input.1,
@@ -126,7 +123,7 @@ fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
                 max_x - 1,
                 max_y - 1,
                 region_size,
-                &get_region_rotation_mappings(),
+                &get_region_rotation_mappings(&region_paths_3d),
             )
         }
         None => traverse_grid(&board, &input.1, max_x - 1, max_y - 1),
@@ -196,6 +193,37 @@ fn get_current_region(
         .expect("region exists")
 }
 
+fn build_region_path_graph(
+    region_bounds: &HashMap<usize, (usize, usize)>,
+    region_size: usize,
+) -> HashMap<usize, Vec<(usize, PointDirection)>> {
+    region_bounds
+        .iter()
+        .map(|(region, (x, y))| {
+            (
+                *region,
+                region_bounds
+                    .iter()
+                    .filter(move |(next_region, _)| region != *next_region)
+                    .filter_map(|(next_region, (next_x, next_y))| {
+                        if x + region_size == *next_x && y == next_y {
+                            Some((*next_region, PointDirection::Right))
+                        } else if x > &0 && x - region_size == *next_x && y == next_y {
+                            Some((*next_region, PointDirection::Left))
+                        } else if x == next_x && y + region_size == *next_y {
+                            Some((*next_region, PointDirection::Down))
+                        } else if y > &0 && x == next_x && y - region_size == *next_y {
+                            Some((*next_region, PointDirection::Up))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
 fn region_direction_mapping(
     point: &BoundedPoint,
     region_bounds: &HashMap<usize, (usize, usize)>,
@@ -222,26 +250,22 @@ fn region_direction_mapping(
                 PointDirection::Up => BoundedPoint {
                     x: x_min + x_offset,
                     y: y_min + region_offset,
-                    max_x: point.max_x,
-                    max_y: point.max_y,
+                    ..*point
                 },
                 PointDirection::Down => BoundedPoint {
                     x: x_min + x_offset,
                     y: *y_min,
-                    max_x: point.max_x,
-                    max_y: point.max_y,
+                    ..*point
                 },
                 PointDirection::Left => BoundedPoint {
                     x: x_min + region_offset,
                     y: y_min + y_offset,
-                    max_x: point.max_x,
-                    max_y: point.max_y,
+                    ..*point
                 },
                 PointDirection::Right => BoundedPoint {
                     x: *x_min,
                     y: y_min + y_offset,
-                    max_x: point.max_x,
-                    max_y: point.max_y,
+                    ..*point
                 },
             },
             direction.clone(),
@@ -251,8 +275,7 @@ fn region_direction_mapping(
                 BoundedPoint {
                     x: x_min + region_offset,
                     y: y_min + region_offset - x_offset,
-                    max_x: point.max_x,
-                    max_y: point.max_y,
+                    ..*point
                 },
                 PointDirection::Left,
             ),
@@ -260,8 +283,7 @@ fn region_direction_mapping(
                 BoundedPoint {
                     x: *x_min,
                     y: y_min + region_offset - x_offset,
-                    max_x: point.max_x,
-                    max_y: point.max_y,
+                    ..*point
                 },
                 PointDirection::Right,
             ),
@@ -269,8 +291,7 @@ fn region_direction_mapping(
                 BoundedPoint {
                     x: x_min + y_offset,
                     y: *y_min,
-                    max_x: point.max_x,
-                    max_y: point.max_y,
+                    ..*point
                 },
                 PointDirection::Down,
             ),
@@ -278,8 +299,7 @@ fn region_direction_mapping(
                 BoundedPoint {
                     x: x_min + y_offset,
                     y: y_min + region_offset,
-                    max_x: point.max_x,
-                    max_y: point.max_y,
+                    ..*point
                 },
                 PointDirection::Up,
             ),
@@ -289,8 +309,7 @@ fn region_direction_mapping(
                 BoundedPoint {
                     x: x_min + region_offset - x_offset,
                     y: *y_min,
-                    max_x: point.max_x,
-                    max_y: point.max_y,
+                    ..*point
                 },
                 PointDirection::Down,
             ),
@@ -298,8 +317,7 @@ fn region_direction_mapping(
                 BoundedPoint {
                     x: x_min + region_offset - x_offset,
                     y: y_min + region_offset,
-                    max_x: point.max_x,
-                    max_y: point.max_y,
+                    ..*point
                 },
                 PointDirection::Up,
             ),
@@ -307,8 +325,7 @@ fn region_direction_mapping(
                 BoundedPoint {
                     x: *x_min,
                     y: y_min + region_offset - y_offset,
-                    max_x: point.max_x,
-                    max_y: point.max_y,
+                    ..*point
                 },
                 PointDirection::Right,
             ),
@@ -316,8 +333,7 @@ fn region_direction_mapping(
                 BoundedPoint {
                     x: x_min + region_offset,
                     y: y_min + region_offset - y_offset,
-                    max_x: point.max_x,
-                    max_y: point.max_y,
+                    ..*point
                 },
                 PointDirection::Left,
             ),
@@ -327,8 +343,7 @@ fn region_direction_mapping(
                 BoundedPoint {
                     x: *x_min,
                     y: y_min + x_offset,
-                    max_x: point.max_x,
-                    max_y: point.max_y,
+                    ..*point
                 },
                 PointDirection::Right,
             ),
@@ -336,8 +351,7 @@ fn region_direction_mapping(
                 BoundedPoint {
                     x: x_min + region_offset,
                     y: y_min + x_offset,
-                    max_x: point.max_x,
-                    max_y: point.max_y,
+                    ..*point
                 },
                 PointDirection::Left,
             ),
@@ -345,8 +359,7 @@ fn region_direction_mapping(
                 BoundedPoint {
                     x: x_min + region_offset - y_offset,
                     y: y_min + region_offset,
-                    max_x: point.max_x,
-                    max_y: point.max_y,
+                    ..*point
                 },
                 PointDirection::Up,
             ),
@@ -354,8 +367,7 @@ fn region_direction_mapping(
                 BoundedPoint {
                     x: x_min + region_offset - y_offset,
                     y: *y_min,
-                    max_x: point.max_x,
-                    max_y: point.max_y,
+                    ..*point
                 },
                 PointDirection::Down,
             ),
@@ -375,246 +387,138 @@ fn insert_mapping(
 
     let to = mapping.entry(to_region).or_insert(HashMap::new());
     let (new_direction, new_rotation) = match rotation {
-        RotationDegrees::Zero => (
-            match direction {
-                PointDirection::Up => PointDirection::Down,
-                PointDirection::Down => PointDirection::Up,
-                PointDirection::Left => PointDirection::Right,
-                PointDirection::Right => PointDirection::Left,
-            },
-            RotationDegrees::Zero,
-        ),
+        RotationDegrees::Zero => (direction.get_opposite(), RotationDegrees::Zero),
         RotationDegrees::Ninety => (
-            match direction {
-                PointDirection::Up => PointDirection::Right,
-                PointDirection::Down => PointDirection::Left,
-                PointDirection::Left => PointDirection::Up,
-                PointDirection::Right => PointDirection::Down,
-            },
+            direction.get_clockwise(),
             RotationDegrees::TwoHundredSeventy,
         ),
         RotationDegrees::OneHundredEighty => (direction, rotation),
-        RotationDegrees::TwoHundredSeventy => (
-            match direction {
-                PointDirection::Up => PointDirection::Left,
-                PointDirection::Down => PointDirection::Right,
-                PointDirection::Left => PointDirection::Down,
-                PointDirection::Right => PointDirection::Up,
-            },
-            RotationDegrees::Ninety,
-        ),
+        RotationDegrees::TwoHundredSeventy => {
+            (direction.get_counter_clockwise(), RotationDegrees::Ninety)
+        }
     };
 
     to.insert(new_direction, (from_region, new_rotation));
 }
 
-// input net
+fn get_mapping_from_path(path: &Vec<PointDirection>) -> Option<(PointDirection, RotationDegrees)> {
+    match path.as_slice() {
+        [p1] => Some((*p1, RotationDegrees::Zero)),
+        [p1, p2] if p1 == p2 => None,
+        [p1, p2] => Some((*p2, p1.get_rotation(p2))),
+        [p1, p2, p3] if p1 == p2 && p2 == p3 => Some((p1.get_opposite(), RotationDegrees::Zero)),
+        [p1, _, p3] if p1 == p3 => None,
+        [p1, p2, p3] if p2 == p3 => Some((p1.get_opposite(), RotationDegrees::OneHundredEighty)),
+        [p1, p2, p3] if p1 == p2 => Some((*p3, RotationDegrees::OneHundredEighty)),
+        [p1, p2, p3, p4] if p1 == p4 && p2 == p3 => None,
+        [p1, p2, p3, p4] if p1 == p2 && p2 == p3 => Some((*p4, p4.get_rotation(p1))),
+        [p1, p2, p3, p4] if p2 == p3 && p3 == p4 => Some((p4.get_opposite(), p4.get_rotation(p1))),
+        [p1, p2, p3, p4] if p1 == p2 && p2 == p4 => Some((p1.get_opposite(), p3.get_rotation(p1))),
+        [p1, p2, p3, p4] if p1 == p3 && p3 == p4 => Some((p2.get_opposite(), p1.get_rotation(p2))),
+        [p1, p2, p3, p4] if p1 == p3 && p2 == p4 => Some((p1.get_opposite(), p2.get_rotation(p1))),
+        [p1, p2, p3, p4, p5] if p1 == p5 && p2 == p3 && p3 == p4 => None,
+        [p1, p2, p3, p4, p5] if p1 == p2 && p2 == p4 && p4 == p5 => {
+            Some((p3.get_opposite(), RotationDegrees::Zero))
+        }
+        [p1, p2, p3, p4, p5] if p1 == p4 && p2 == p3 && p3 == p5 => {
+            Some((p2.get_opposite(), RotationDegrees::Zero))
+        }
+        [p1, p2, p3, p4, p5] if p1 == p3 && p3 == p4 && p2 == p5 => {
+            Some((p1.get_opposite(), RotationDegrees::Zero))
+        }
+        [p1, p2, p3, p4, p5] if p1 == p3 && p3 == p5 && p2 == p4 => {
+            Some((p2.get_opposite(), RotationDegrees::Zero))
+        }
+        _ => None,
+    }
+}
+
 fn get_region_rotation_mappings(
+    paths: &HashMap<usize, Vec<(usize, Vec<PointDirection>)>>,
 ) -> HashMap<usize, HashMap<PointDirection, (usize, RotationDegrees)>> {
     let mut mappings = HashMap::new();
 
-    insert_mapping(
-        &mut mappings,
-        1,
-        3,
-        PointDirection::Down,
-        RotationDegrees::Zero,
-    );
+    let first = paths.get(&1).expect("First face exists");
+    let mut opposite = 1;
+    let mut visitied = HashSet::from([1]);
 
-    insert_mapping(
-        &mut mappings,
-        1,
-        2,
-        PointDirection::Right,
-        RotationDegrees::Zero,
-    );
+    first.iter().for_each(|(region, path)| {
+        if let Some((direction, rotation)) = get_mapping_from_path(path) {
+            insert_mapping(&mut mappings, 1, *region, direction, rotation);
+        } else {
+            opposite = *region;
+        }
+    });
 
-    insert_mapping(
-        &mut mappings,
-        1,
-        6,
-        PointDirection::Up,
-        RotationDegrees::TwoHundredSeventy,
-    );
+    visitied.insert(opposite);
 
-    insert_mapping(
-        &mut mappings,
-        1,
-        4,
-        PointDirection::Left,
-        RotationDegrees::OneHundredEighty,
-    );
+    let next = paths.get(&opposite).expect("Opposite side exists");
+    next.iter()
+        .filter(|(region, _)| !visitied.contains(region))
+        .for_each(|(region, path)| {
+            if let Some((direction, rotation)) = get_mapping_from_path(path) {
+                insert_mapping(&mut mappings, opposite, *region, direction, rotation);
+            }
+        });
 
-    insert_mapping(
-        &mut mappings,
-        5,
-        6,
-        PointDirection::Down,
-        RotationDegrees::TwoHundredSeventy,
-    );
+    let next_region = paths
+        .keys()
+        .find(|region| !visitied.contains(region))
+        .expect("At least one unvisited region");
+    visitied.insert(*next_region);
 
-    insert_mapping(
-        &mut mappings,
-        5,
-        2,
-        PointDirection::Right,
-        RotationDegrees::OneHundredEighty,
-    );
+    let next = paths.get(&next_region).expect("Opposite side exists");
 
-    insert_mapping(
-        &mut mappings,
-        5,
-        3,
-        PointDirection::Up,
-        RotationDegrees::Zero,
-    );
+    next.iter()
+        .filter(|(region, _)| !visitied.contains(region))
+        .for_each(|(region, path)| {
+            if let Some((direction, rotation)) = get_mapping_from_path(path) {
+                insert_mapping(&mut mappings, *next_region, *region, direction, rotation);
+            } else {
+                opposite = *region
+            }
+        });
 
-    insert_mapping(
-        &mut mappings,
-        5,
-        4,
-        PointDirection::Left,
-        RotationDegrees::Zero,
-    );
+    visitied.insert(opposite);
 
-    insert_mapping(
-        &mut mappings,
-        4,
-        6,
-        PointDirection::Down,
-        RotationDegrees::Zero,
-    );
-
-    insert_mapping(
-        &mut mappings,
-        4,
-        3,
-        PointDirection::Up,
-        RotationDegrees::TwoHundredSeventy,
-    );
-
-    insert_mapping(
-        &mut mappings,
-        2,
-        3,
-        PointDirection::Down,
-        RotationDegrees::TwoHundredSeventy,
-    );
-
-    insert_mapping(
-        &mut mappings,
-        2,
-        6,
-        PointDirection::Up,
-        RotationDegrees::Zero,
-    );
+    let next = paths.get(&opposite).expect("Opposite side exists");
+    next.iter()
+        .filter(|(region, _)| !visitied.contains(region))
+        .for_each(|(region, path)| {
+            if let Some((direction, rotation)) = get_mapping_from_path(path) {
+                insert_mapping(&mut mappings, opposite, *region, direction, rotation);
+            }
+        });
 
     mappings
 }
 
-// sample net
-/*fn get_region_rotation_mappings(
-) -> HashMap<usize, HashMap<PointDirection, (usize, RotationDegrees)>> {
-    let mut mappings = HashMap::new();
-
-    insert_mapping(
-        &mut mappings,
-        1,
-        4,
-        PointDirection::Down,
-        RotationDegrees::Zero,
-    );
-
-    insert_mapping(
-        &mut mappings,
-        1,
-        3,
-        PointDirection::Left,
-        RotationDegrees::Ninety,
-    );
-
-    insert_mapping(
-        &mut mappings,
-        1,
-        6,
-        PointDirection::Right,
-        RotationDegrees::OneHundredEighty,
-    );
-
-    insert_mapping(
-        &mut mappings,
-        1,
-        2,
-        PointDirection::Up,
-        RotationDegrees::OneHundredEighty,
-    );
-
-    insert_mapping(
-        &mut mappings,
-        2,
-        5,
-        PointDirection::Down,
-        RotationDegrees::OneHundredEighty,
-    );
-
-    insert_mapping(
-        &mut mappings,
-        2,
-        6,
-        PointDirection::Left,
-        RotationDegrees::TwoHundredSeventy,
-    );
-
-    insert_mapping(
-        &mut mappings,
-        2,
-        3,
-        PointDirection::Right,
-        RotationDegrees::Zero,
-    );
-
-    insert_mapping(
-        &mut mappings,
-        3,
-        5,
-        PointDirection::Down,
-        RotationDegrees::Ninety,
-    );
-
-    insert_mapping(
-        &mut mappings,
-        3,
-        4,
-        PointDirection::Right,
-        RotationDegrees::Zero,
-    );
-
-    insert_mapping(
-        &mut mappings,
-        4,
-        5,
-        PointDirection::Down,
-        RotationDegrees::Zero,
-    );
-
-    insert_mapping(
-        &mut mappings,
-        4,
-        6,
-        PointDirection::Right,
-        RotationDegrees::TwoHundredSeventy,
-    );
-
-    insert_mapping(
-        &mut mappings,
-        5,
-        6,
-        PointDirection::Right,
-        RotationDegrees::Zero,
-    );
-
-    mappings
-}*/
+fn build_3d_region_paths(
+    paths: &HashMap<usize, Vec<(usize, PointDirection)>>,
+) -> HashMap<usize, Vec<(usize, Vec<PointDirection>)>> {
+    paths
+        .keys()
+        .map(|region| {
+            (
+                *region,
+                paths
+                    .keys()
+                    .filter(|target_region| region != *target_region)
+                    .map(|target_region| {
+                        (
+                            *target_region,
+                            shortest_path(*region, paths, target_region)
+                                .nodes
+                                .into_iter()
+                                .map(|(_, direction)| direction)
+                                .collect(),
+                        )
+                    })
+                    .collect(),
+            )
+        })
+        .collect()
+}
 
 fn traverse_grid_cube(
     board: &Vec<Vec<Tile>>,
@@ -645,21 +549,9 @@ fn traverse_grid_cube(
     instructions
         .iter()
         .for_each(|instruction| match instruction {
-            Instruction::RotateClockwise => {
-                current_direction = match current_direction {
-                    PointDirection::Up => PointDirection::Right,
-                    PointDirection::Down => PointDirection::Left,
-                    PointDirection::Left => PointDirection::Up,
-                    PointDirection::Right => PointDirection::Down,
-                }
-            }
+            Instruction::RotateClockwise => current_direction = current_direction.get_clockwise(),
             Instruction::RotateCounterClockwise => {
-                current_direction = match current_direction {
-                    PointDirection::Up => PointDirection::Left,
-                    PointDirection::Down => PointDirection::Right,
-                    PointDirection::Left => PointDirection::Down,
-                    PointDirection::Right => PointDirection::Up,
-                }
+                current_direction = current_direction.get_counter_clockwise()
             }
             Instruction::Distance(value) => {
                 for _ in 0..*value {
@@ -727,21 +619,9 @@ fn traverse_grid(
     instructions
         .iter()
         .for_each(|instruction| match instruction {
-            Instruction::RotateClockwise => {
-                current_direction = match current_direction {
-                    PointDirection::Up => PointDirection::Right,
-                    PointDirection::Down => PointDirection::Left,
-                    PointDirection::Left => PointDirection::Up,
-                    PointDirection::Right => PointDirection::Down,
-                }
-            }
+            Instruction::RotateClockwise => current_direction = current_direction.get_clockwise(),
             Instruction::RotateCounterClockwise => {
-                current_direction = match current_direction {
-                    PointDirection::Up => PointDirection::Left,
-                    PointDirection::Down => PointDirection::Right,
-                    PointDirection::Left => PointDirection::Down,
-                    PointDirection::Right => PointDirection::Up,
-                }
+                current_direction = current_direction.get_counter_clockwise()
             }
             Instruction::Distance(value) => {
                 for _ in 0..*value {
@@ -768,4 +648,51 @@ fn traverse_grid(
         });
 
     (current_point, current_direction)
+}
+
+#[derive(Debug, Clone)]
+struct Path {
+    nodes: Vec<(usize, PointDirection)>,
+}
+
+fn shortest_path(
+    start_region: usize,
+    graph: &HashMap<usize, Vec<(usize, PointDirection)>>,
+    target: &usize,
+) -> Path {
+    let mut visited = BTreeSet::from([start_region]);
+
+    let mut queue = graph
+        .get(&start_region)
+        .iter()
+        .flat_map(|adjacents| adjacents.iter().cloned())
+        .map(|step| Path { nodes: vec![step] })
+        .collect::<VecDeque<Path>>();
+
+    while queue.len() > 0 {
+        let current = queue.pop_front().expect("At least one item in the queue");
+        let last = current.nodes.last().expect("At least one item in the path");
+
+        if &last.0 == target {
+            return current;
+        }
+
+        let filtered_adjacents = graph
+            .get(&last.0)
+            .expect("Valid index")
+            .iter()
+            .filter(|node| !visited.contains(&node.0))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        filtered_adjacents
+            .into_iter()
+            .for_each(|(region, direction)| {
+                let mut new = current.clone();
+                new.nodes.push((region, direction));
+                visited.insert(region);
+                queue.push_back(new);
+            });
+    }
+    unreachable!()
 }
