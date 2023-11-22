@@ -1,4 +1,4 @@
-#![feature(once_cell)]
+#![feature(lazy_cell)]
 
 use adventofcode2022::{Command, CommandResult};
 use anyhow::Result;

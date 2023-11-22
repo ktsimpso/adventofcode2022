@@ -95,7 +95,7 @@ fn run(input: ParseOutput, arguments: CommandLineArguments) -> usize {
                     .get(current_tail_index - 1)
                     .expect("valid index")
                     .clone();
-                let mut follower = chain.get_mut(current_tail_index).expect("valid index");
+                let follower = chain.get_mut(current_tail_index).expect("valid index");
 
                 if absolute_difference(follower.0, leader.0) > 1
                     || absolute_difference(follower.1, leader.1) > 1

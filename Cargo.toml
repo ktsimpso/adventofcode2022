@@ -9,6 +9,6 @@ edition = "2021"
 anyhow = "1.0.66"
 ariadne = "0.1.5"
 chumsky = "0.8.0"
-clap = { version = "4.0.29", features = ["derive", "string"] }
+clap = { version = "4.4.8", features = ["derive", "string"] }
 itertools = "0.10.5"
 rayon = "1.6.1"
